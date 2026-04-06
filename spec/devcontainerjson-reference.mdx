@@ -1,0 +1,692 @@
+---
+title: "devcontainer.json reference"
+description: "Complete reference for all properties available in devcontainer.json, the metadata file that configures a development container."
+---
+
+The `devcontainer.json` file contains the metadata and settings required to configure a **development container** for a given tool and runtime stack. It can be used by [tools and services that support the dev container spec](https://containers.dev/supporting) to create a development environment that contains one or more development containers.
+
+Properties marked with 🏷️ can also be stored in the `devcontainer.metadata` container image label. See the [image metadata reference](/spec/image-metadata) for details.
+
+## General properties
+
+<AccordionGroup>
+
+<Accordion title="name">
+<ParamField body="name" type="string">
+  A display name for the dev container shown in the UI.
+</ParamField>
+</Accordion>
+
+<Accordion title="forwardPorts 🏷️">
+<ParamField body="forwardPorts" type="array" default="[]">
+  An array of port numbers or `"host:port"` values that should always be forwarded from inside the primary container to the local machine (including on the web).
+
+  This is most useful for forwarding ports that cannot be auto-forwarded because the related process starts before the supporting service connects, or for forwarding a service not in the primary container in Docker Compose scenarios.
+
+  ```json
+  "forwardPorts": [3000, "db:5432"]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="portsAttributes 🏷️">
+<ParamField body="portsAttributes" type="object">
+  Maps a port number, `"host:port"` value, range, or regular expression to a set of default options. See [port attributes](#port-attributes) for available options.
+
+  ```json
+  "portsAttributes": {
+    "3000": { "label": "Application port" },
+    "40000-55000": { "onAutoForward": "ignore" },
+    ".+\\/server.js": { "onAutoForward": "openPreview" }
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="otherPortsAttributes 🏷️">
+<ParamField body="otherPortsAttributes" type="object">
+  Default options for ports, port ranges, and hosts that are not configured using `portsAttributes`. See [port attributes](#port-attributes) for available options.
+
+  ```json
+  "otherPortsAttributes": { "onAutoForward": "silent" }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="containerEnv 🏷️">
+<ParamField body="containerEnv" type="object">
+  A set of name-value pairs that sets or overrides environment variables for the container. Environment and [pre-defined variables](/spec/variables) may be referenced in the values.
+
+  `containerEnv` sets the variable on the Docker container itself so all processes spawned in the container have access to it. The value is static for the life of the container — you must rebuild the container to update it.
+
+  Use `remoteEnv` instead if you need to reference an existing container variable (like updating `PATH`).
+
+  ```json
+  "containerEnv": {
+    "MY_VARIABLE": "${localEnv:MY_VARIABLE}"
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="remoteEnv 🏷️">
+<ParamField body="remoteEnv" type="object">
+  A set of name-value pairs that sets or overrides environment variables for the supporting service or tool (and sub-processes like terminals) but not the container as a whole. Environment and [pre-defined variables](/spec/variables) may be referenced in the values.
+
+  Use `remoteEnv` when the value is not static, since you can update it without rebuilding the container.
+
+  ```json
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/some/other/path"
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="remoteUser 🏷️">
+<ParamField body="remoteUser" type="string">
+  Overrides the user that the supporting tool runs as inside the container, including sub-processes like terminals, tasks, and debugging. Does not change the user the container as a whole runs as (see `containerUser` for that).
+
+  Defaults to the user the container is running as (often `root`).
+
+  A dev container configuration inherits `remoteUser` from the base image it uses.
+</ParamField>
+</Accordion>
+
+<Accordion title="containerUser 🏷️">
+<ParamField body="containerUser" type="string">
+  Overrides the user for all operations run inside the container. Defaults to either `root` or the last `USER` instruction in the related Dockerfile.
+
+  To use a different user only for connected tools and processes, see `remoteUser`.
+</ParamField>
+</Accordion>
+
+<Accordion title="updateRemoteUserUID 🏷️">
+<ParamField body="updateRemoteUserUID" type="boolean" default="true">
+  On Linux, if `containerUser` or `remoteUser` is specified, the user's UID/GID will be updated to match the local user's UID/GID to avoid permission problems with bind mounts.
+</ParamField>
+</Accordion>
+
+<Accordion title="userEnvProbe 🏷️">
+<ParamField body="userEnvProbe" type="string" default="loginInteractiveShell">
+  Indicates the type of shell to use to "probe" for user environment variables to include in the supporting tool's processes.
+
+  Available values:
+  - `none`
+  - `interactiveShell` — includes variables from `/etc/bash.bashrc` and `~/.bashrc`
+  - `loginShell` — includes variables from `/etc/profile` and `~/.profile`
+  - `loginInteractiveShell` — includes variables from all four files (default)
+</ParamField>
+</Accordion>
+
+<Accordion title="overrideCommand 🏷️">
+<ParamField body="overrideCommand" type="boolean">
+  Tells supporting tools whether they should run `/bin/sh -c "while sleep 1000; do :; done"` when starting the container instead of the container's default command (since the container can shut down if the default command fails).
+
+  Set to `false` if the default command must run for the container to function properly.
+
+  Defaults to `true` for image/Dockerfile configurations and `false` for Docker Compose.
+</ParamField>
+</Accordion>
+
+<Accordion title="shutdownAction 🏷️">
+<ParamField body="shutdownAction" type="string">
+  Indicates whether supporting tools should stop the containers when the related tool window is closed or shut down.
+
+  Available values:
+  - `none`
+  - `stopContainer` — default for image or Dockerfile
+  - `stopCompose` — default for Docker Compose
+</ParamField>
+</Accordion>
+
+<Accordion title="init 🏷️">
+<ParamField body="init" type="boolean" default="false">
+  Cross-orchestrator way to indicate whether the [tini init process](https://github.com/krallin/tini) should be used to help deal with zombie processes. Passes `--init` to the container.
+</ParamField>
+</Accordion>
+
+<Accordion title="privileged 🏷️">
+<ParamField body="privileged" type="boolean" default="false">
+  Cross-orchestrator way to cause the container to run in privileged mode (`--privileged`). Required for things like Docker-in-Docker, but has security implications particularly when running directly on Linux.
+</ParamField>
+</Accordion>
+
+<Accordion title="capAdd 🏷️">
+<ParamField body="capAdd" type="string[]" default="[]">
+  Cross-orchestrator way to add capabilities typically disabled for a container. Most often used to add the `ptrace` capability required to debug languages like C++, Go, and Rust.
+
+  ```json
+  "capAdd": ["SYS_PTRACE"]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="securityOpt 🏷️">
+<ParamField body="securityOpt" type="string[]" default="[]">
+  Cross-orchestrator way to set container security options.
+
+  ```json
+  "securityOpt": ["seccomp=unconfined"]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="mounts 🏷️">
+<ParamField body="mounts" type="string | object[]">
+  Cross-orchestrator way to add additional mounts to a container. Each value is a string that accepts the same values as the [Docker CLI `--mount` flag](https://docs.docker.com/engine/reference/commandline/run/#mount), or an object with `type`, `source`, and `target` fields.
+
+  Environment and [pre-defined variables](/spec/variables) may be referenced in the value.
+
+  ```json
+  "mounts": [
+    {
+      "source": "dind-var-lib-docker",
+      "target": "/var/lib/docker",
+      "type": "volume"
+    }
+  ]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="features">
+<ParamField body="features" type="object">
+  An object of [Dev Container Feature IDs](https://containers.dev/features) and related options to be added to your primary container. Options vary by feature — see each feature's documentation for details.
+
+  ```json
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli": {},
+    "ghcr.io/devcontainers/features/node": { "version": "lts" }
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="overrideFeatureInstallOrder">
+<ParamField body="overrideFeatureInstallOrder" type="string[]">
+  By default, Features attempt to automatically set their install order based on an `installsAfter` property within each Feature. This property lets you override the install order when needed.
+
+  Provide Feature IDs without semantic version suffixes.
+
+  ```json
+  "overrideFeatureInstallOrder": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/github-cli"
+  ]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="customizations 🏷️">
+<ParamField body="customizations" type="object">
+  Product-specific properties. Each tool uses a JSON object sub-property with a unique name to group its customizations.
+
+  ```json
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"],
+      "settings": { "editor.formatOnSave": true }
+    }
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="secrets">
+<ParamField body="secrets" type="object">
+  Declares recommended secrets for this dev container. Keys must be valid Unix environment variable names (`[a-zA-Z_][a-zA-Z0-9_]*`). Each value is an object with optional metadata.
+
+  Secrets declared here are **recommendations**, not requirements. Container creation is not blocked if a secret is absent.
+
+  ```json
+  "secrets": {
+    "CHAT_GPT_API_KEY": {
+      "description": "API key for the OpenAI ChatGPT service.",
+      "documentationUrl": "https://openai.com/api/"
+    },
+    "STABLE_DIFFUSION_API_KEY": {}
+  }
+  ```
+
+  Each secret entry accepts:
+  - `description` (string) — A brief description displayed to users by supporting tools.
+  - `documentationUrl` (string, URI) — URL where users can learn how to obtain the secret.
+
+  Implementations may inject declared secrets as environment variables inside the container. See [Secrets support](/spec/secrets-support) for details.
+</ParamField>
+</Accordion>
+
+</AccordionGroup>
+
+## Image and Dockerfile properties
+
+These properties apply when working without a container orchestrator, by directly referencing an image or Dockerfile.
+
+<AccordionGroup>
+
+<Accordion title="image">
+<ParamField body="image" type="string" required>
+  The name of an image in a container registry (Docker Hub, GitHub Container Registry, Azure Container Registry) that supporting tools should use to create the dev container.
+
+  Required when using an image directly (without a Dockerfile).
+
+  ```json
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-18-bullseye"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="build.dockerfile">
+<ParamField body="build.dockerfile" type="string" required>
+  The location of a [Dockerfile](https://docs.docker.com/engine/reference/builder/) that defines the contents of the container. The path is relative to the `devcontainer.json` file.
+
+  Required when using a Dockerfile.
+
+  ```json
+  "build": { "dockerfile": "Dockerfile" }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="build.context">
+<ParamField body="build.context" type="string" default=".">
+  Path that the Docker build should be run from, relative to `devcontainer.json`. A value of `".."` lets you reference content in sibling directories.
+
+  ```json
+  "build": { "dockerfile": "Dockerfile", "context": ".." }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="build.args">
+<ParamField body="build.args" type="object">
+  Name-value pairs of [Docker image build arguments](https://docs.docker.com/engine/reference/commandline/build/#set-build-time-variables---build-arg) to pass when building a Dockerfile. Environment and [pre-defined variables](/spec/variables) may be referenced in the values.
+
+  ```json
+  "build": {
+    "args": {
+      "MYARG": "MYVALUE",
+      "MYARGFROMENVVAR": "${localEnv:VARIABLE_NAME}"
+    }
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="build.options">
+<ParamField body="build.options" type="string[]" default="[]">
+  An array of [Docker image build options](https://docs.docker.com/engine/reference/commandline/build/#options) to pass when building a Dockerfile.
+
+  ```json
+  "build": {
+    "options": ["--add-host=host.docker.internal:host-gateway"]
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="build.target">
+<ParamField body="build.target" type="string">
+  A [Docker image build target](https://docs.docker.com/engine/reference/commandline/build/#specifying-target-build-stage---target) to pass when building a Dockerfile. Used for multi-stage builds.
+
+  ```json
+  "build": { "target": "development" }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="build.cacheFrom">
+<ParamField body="build.cacheFrom" type="string | string[]">
+  One or more images to use as caches when building the image. Identifiers are passed to the `docker build` command with `--cache-from`.
+
+  ```json
+  "build": {
+    "cacheFrom": "ghcr.io/my-org/my-image:latest"
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="appPort">
+<ParamField body="appPort" type="integer | string | array" default="[]">
+  A port or array of ports that should be published locally when the container is running.
+
+  <Note>
+    In most cases, use `forwardPorts` instead. Unlike `forwardPorts`, your application may need to listen on all interfaces (`0.0.0.0`) for `appPort` to be available externally.
+  </Note>
+
+  ```json
+  "appPort": [3000, "8000:8010"]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="workspaceMount">
+<ParamField body="workspaceMount" type="string">
+  Overrides the default local mount point for the workspace when the container is created. Requires `workspaceFolder` to also be set. Supports the same values as the [Docker CLI `--mount` flag](https://docs.docker.com/engine/reference/commandline/run/#add-bind-mounts-or-volumes-using-the---mount-flag).
+
+  Environment and [pre-defined variables](/spec/variables) may be referenced in the value.
+
+  ```json
+  "workspaceMount": "source=${localWorkspaceFolder}/sub-folder,target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="workspaceFolder">
+<ParamField body="workspaceFolder" type="string">
+  Sets the default path that supporting tools should open when connecting to the container. Requires `workspaceMount` to also be set (for image/Dockerfile scenarios). Defaults to the automatic source code mount location.
+
+  In Docker Compose scenarios, defaults to `"/"`.
+</ParamField>
+</Accordion>
+
+<Accordion title="runArgs">
+<ParamField body="runArgs" type="string[]" default="[]">
+  An array of [Docker CLI arguments](https://docs.docker.com/engine/reference/commandline/run/) to use when running the container.
+
+  ```json
+  "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"]
+  ```
+
+  <Note>
+    Do not include single quotes around arguments that contain spaces. Use the array format directly:
+    `"runArgs": ["--device-cgroup-rule=my rule here"]`
+  </Note>
+</ParamField>
+</Accordion>
+
+</AccordionGroup>
+
+## Docker Compose properties
+
+These properties apply when using Docker Compose as a multi-container orchestrator.
+
+<AccordionGroup>
+
+<Accordion title="dockerComposeFile">
+<ParamField body="dockerComposeFile" type="string | string[]" required>
+  Path or ordered list of paths to Docker Compose files relative to the `devcontainer.json` file. Using an array is useful when [extending your Docker Compose configuration](https://docs.docker.com/compose/extends/#multiple-compose-files). Later files can override values from earlier ones.
+
+  The default `.env` file is picked up from the project root, or you can use `env_file` in your Compose file to specify an alternate location.
+
+  ```json
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.dev.yml"]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="service">
+<ParamField body="service" type="string" required>
+  The name of the service that supporting tools should connect to once running. This is the primary container for your dev environment.
+
+  ```json
+  "service": "app"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="runServices">
+<ParamField body="runServices" type="string[]">
+  An array of services in your Docker Compose configuration that should be started. These will also be stopped when you disconnect unless `shutdownAction` is `"none"`. Defaults to all services.
+
+  ```json
+  "runServices": ["app", "db", "redis"]
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="workspaceFolder (Compose)">
+<ParamField body="workspaceFolder" type="string" default="/">
+  Sets the default path that supporting tools should open when connecting to the container. This is typically the path to a volume mount where source code can be found in the container.
+</ParamField>
+</Accordion>
+
+</AccordionGroup>
+
+## Lifecycle scripts
+
+Lifecycle scripts run at different points in the container's lifecycle, in the order listed. Each command property accepts a string, array, or object value.
+
+<Note>
+  If a lifecycle script fails, subsequent scripts in the sequence will not execute.
+</Note>
+
+### Command formats
+
+All lifecycle script properties accept three formats:
+
+<Tabs>
+  <Tab title="String">
+    Executed via `/bin/sh`. Use `&&` to chain commands.
+
+    ```json
+    "postCreateCommand": "apt-get update && apt-get install -y curl"
+    ```
+  </Tab>
+  <Tab title="Array">
+    Invokes the command directly without a shell. Single quotes are preserved literally.
+
+    ```json
+    "postCreateCommand": ["yarn", "install"]
+    ```
+  </Tab>
+  <Tab title="Object (parallel)">
+    Each key is a unique name; each value is a string or array command. All commands in the object run in parallel during that lifecycle step.
+
+    ```json
+    "postCreateCommand": {
+      "server": "npm start",
+      "db": ["mysql", "-u", "root", "-p", "my database"]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Script reference
+
+<AccordionGroup>
+
+<Accordion title="initializeCommand">
+<ParamField body="initializeCommand" type="string | string[] | object">
+  Runs on the **host machine** during initialization, including during container creation and on subsequent starts. The command may run more than once during a given session.
+
+  <Warning>
+    This command runs wherever the source code is located on the host. For cloud services, the host is in the cloud rather than your local machine.
+  </Warning>
+
+  ```json
+  "initializeCommand": "echo 'Initializing...' && ./scripts/check-prerequisites.sh"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="onCreateCommand 🏷️">
+<ParamField body="onCreateCommand" type="string | string[] | object">
+  The first of three commands that finalize container setup when a dev container is created. Executes **inside** the container immediately after it starts for the first time.
+
+  Cloud services can use this command when caching or prebuilding a container. It will not typically have access to user-scoped assets or secrets.
+
+  ```json
+  "onCreateCommand": "pip install -r requirements.txt"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="updateContentCommand 🏷️">
+<ParamField body="updateContentCommand" type="string | string[] | object">
+  The second of three setup commands. Executes inside the container after `onCreateCommand` whenever new content is available in the source tree during creation.
+
+  Runs at least once. Cloud services also periodically re-run this command to refresh cached or prebuilt containers. Like `onCreateCommand`, it can only use repository and org scoped secrets or permissions.
+
+  ```json
+  "updateContentCommand": "npm install"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="postCreateCommand 🏷️">
+<ParamField body="postCreateCommand" type="string | string[] | object">
+  The last of three setup commands. Runs after `updateContentCommand`, once the dev container has been assigned to a user for the first time.
+
+  Cloud services can use this command to take advantage of user-specific secrets and permissions.
+
+  ```json
+  "postCreateCommand": "bash scripts/install-dev-tools.sh"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="postStartCommand 🏷️">
+<ParamField body="postStartCommand" type="string | string[] | object">
+  Runs each time the container is successfully started.
+
+  ```json
+  "postStartCommand": "git config --global core.autocrlf false"
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="postAttachCommand 🏷️">
+<ParamField body="postAttachCommand" type="string | string[] | object">
+  Runs each time a tool has successfully attached to the container.
+
+  ```json
+  "postAttachCommand": {
+    "welcome": "echo 'Welcome to your dev container!'",
+    "status": ["git", "status"]
+  }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="waitFor 🏷️">
+<ParamField body="waitFor" type="string" default="updateContentCommand">
+  Specifies which lifecycle command the tool should wait for before connecting. This lets you use earlier commands for steps that must complete before the tool connects, while later commands run in the background.
+
+  Available values: `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`
+</ParamField>
+</Accordion>
+
+</AccordionGroup>
+
+## Host requirements
+
+Declare the minimum hardware requirements for the container. Cloud services use these to automatically select the best compute option; other tools display a warning if requirements are not met.
+
+<AccordionGroup>
+
+<Accordion title="hostRequirements.cpus 🏷️">
+<ParamField body="hostRequirements.cpus" type="integer">
+  Minimum required number of CPUs, virtual CPUs, or cores.
+
+  ```json
+  "hostRequirements": { "cpus": 2 }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="hostRequirements.memory 🏷️">
+<ParamField body="hostRequirements.memory" type="string">
+  Minimum memory requirement with a `tb`, `gb`, `mb`, or `kb` suffix.
+
+  ```json
+  "hostRequirements": { "memory": "4gb" }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="hostRequirements.storage 🏷️">
+<ParamField body="hostRequirements.storage" type="string">
+  Minimum storage requirement with a `tb`, `gb`, `mb`, or `kb` suffix.
+
+  ```json
+  "hostRequirements": { "storage": "32gb" }
+  ```
+</ParamField>
+</Accordion>
+
+<Accordion title="hostRequirements.gpu">
+<ParamField body="hostRequirements.gpu" type="boolean | string | object">
+  Indicates whether a GPU is required.
+
+  - `true` — GPU required
+  - `false` — no GPU required
+  - `"optional"` — GPU used if available
+  - Object — configure specific GPU requirements:
+    - `cores` (integer) — minimum number of GPU cores
+    - `memory` (string) — minimum GPU memory with unit suffix
+
+  ```json
+  "hostRequirements": {
+    "gpu": {
+      "cores": 4,
+      "memory": "8gb"
+    }
+  }
+  ```
+</ParamField>
+</Accordion>
+
+</AccordionGroup>
+
+## Port attributes
+
+The `portsAttributes` and `otherPortsAttributes` properties accept an object with the following fields.
+
+<AccordionGroup>
+
+<Accordion title="label 🏷️">
+<ParamField body="label" type="string">
+  Display name for the port in the ports view.
+</ParamField>
+</Accordion>
+
+<Accordion title="protocol 🏷️">
+<ParamField body="protocol" type="string">
+  Controls protocol handling for forwarded ports.
+
+  - Not set — port is treated as raw TCP, supporting any protocol when forwarded to `localhost`
+  - `"http"` — same handling as not set
+  - `"https"` — ignores SSL/TLS certificates present on the port and uses the correct certificate for the forwarded URL (e.g. `https://*.githubpreview.dev`)
+</ParamField>
+</Accordion>
+
+<Accordion title="onAutoForward 🏷️">
+<ParamField body="onAutoForward" type="string" default="notify">
+  Controls what happens when a port is auto-forwarded after connecting to the container.
+
+  - `notify` — shows a notification (default)
+  - `openBrowser` — opens the system's default browser
+  - `openBrowserOnce` — opens the browser only the first time in a session
+  - `openPreview` — opens the URL in the tool's embedded preview browser
+  - `silent` — forwards the port with no further action
+  - `ignore` — port is not auto-forwarded
+</ParamField>
+</Accordion>
+
+<Accordion title="requireLocalPort 🏷️">
+<ParamField body="requireLocalPort" type="boolean" default="false">
+  When `false`, supporting tools silently map to a different local port if the specified one is unavailable. When `true`, you are notified if the same port cannot be used.
+</ParamField>
+</Accordion>
+
+<Accordion title="elevateIfNeeded 🏷️">
+<ParamField body="elevateIfNeeded" type="boolean" default="false">
+  Forwarding low ports (22, 80, 443) to `localhost` on the same port may require elevated permissions on certain operating systems. When `true`, the tool automatically tries to elevate its permissions in this situation.
+</ParamField>
+</Accordion>
+
+</AccordionGroup>
+
+## Publishing vs. forwarding ports
+
+Docker has the concept of **publishing** ports when the container is created. Published ports behave like ports exposed to your local network — if your application only accepts calls from `localhost`, it will reject connections from published ports just as it would for network calls.
+
+**Forwarded** ports appear as `localhost` to the application, which is why `forwardPorts` is preferred over `appPort` in most cases.
+
+## Schema
+
+The full JSON schema for `devcontainer.json` is available at [github.com/devcontainers/spec](https://github.com/devcontainers/spec/blob/main/schemas/devContainer.base.schema.json).

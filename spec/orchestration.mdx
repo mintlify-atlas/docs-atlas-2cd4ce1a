@@ -1,0 +1,192 @@
+---
+title: "Orchestration"
+description: "The three orchestration modes in the Dev Container Specification: image-based, Dockerfile-based, and Docker Compose-based configurations."
+---
+
+A core principle of this specification is to enrich existing container orchestrator formats with development container metadata rather than replacing them. The metadata schema includes optional properties for interoperating with different orchestrators.
+
+The specification currently supports three orchestration modes:
+
+<CardGroup cols={3}>
+  <Card title="Image-based" icon="box-archive">
+    Reference a pre-built image directly. The simplest option when you already have an image ready to use.
+  </Card>
+  <Card title="Dockerfile-based" icon="file-code">
+    Build your container from a `Dockerfile`. Gives full control over the image contents.
+  </Card>
+  <Card title="Docker Compose-based" icon="layer-group">
+    Use Docker Compose to manage a set of containers. Best for multi-container applications.
+  </Card>
+</CardGroup>
+
+## Choosing an orchestration mode
+
+<Tabs>
+  <Tab title="Image-based">
+    Image-based configurations reference an image that must be reachable and downloadable via `docker pull`. Logins and tokens required for pulling are execution-environment-specific.
+
+    The only required property is `image`.
+
+    ```json
+    {
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu"
+    }
+    ```
+
+    You can reference images from any container registry — DockerHub, GitHub Container Registry, Azure Container Registry, or others — as long as the image is accessible from the environment.
+
+    ```json
+    {
+      "name": "Node.js dev container",
+      "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+      "forwardPorts": [3000],
+      "postCreateCommand": "npm install"
+    }
+    ```
+  </Tab>
+  <Tab title="Dockerfile-based">
+    Dockerfile-based configurations use a `Dockerfile` to define the container's starting point. Base images must be reachable by Docker when running `docker build`.
+
+    The only required property is `build.dockerfile`, a path relative to the `devcontainer.json` file.
+
+    ```json
+    {
+      "name": "Custom dev container",
+      "build": {
+        "dockerfile": "Dockerfile"
+      }
+    }
+    ```
+
+    Additional `build` properties let you control how `docker build` runs:
+
+    | Property | Type | Description |
+    |----------|------|-------------|
+    | `build.dockerfile` | `string` | **Required.** Path to the Dockerfile, relative to `devcontainer.json`. |
+    | `build.context` | `string` | The path the Docker build runs from, relative to `devcontainer.json`. Defaults to `"."`. |
+    | `build.args` | object | Name-value pairs passed as `--build-arg` to `docker build`. |
+    | `build.options` | `string[]` | Array of additional options passed to the `docker build` command. |
+    | `build.target` | `string` | Specifies a build target stage (`--target`). |
+    | `build.cacheFrom` | `string \| string[]` | One or more images to use as cache sources (`--cache-from`). |
+
+    ```json
+    {
+      "name": "Python dev container",
+      "build": {
+        "dockerfile": "../Dockerfile",
+        "context": "..",
+        "args": {
+          "PYTHON_VERSION": "3.11",
+          "INSTALL_DEV_DEPS": "true"
+        },
+        "options": ["--add-host=host.docker.internal:host-gateway"],
+        "target": "development",
+        "cacheFrom": "ghcr.io/myorg/myimage:cache"
+      },
+      "postCreateCommand": "pip install -r requirements-dev.txt"
+    }
+    ```
+  </Tab>
+  <Tab title="Docker Compose-based">
+    Docker Compose configurations use `docker-compose` (V1 or aliased V2) to create and manage a set of containers for an application. Images required for this must be reachable.
+
+    <Note>
+      The `image` and `build.dockerfile` properties are not needed in Docker Compose mode — Docker Compose handles image and build configuration natively in the Compose file.
+    </Note>
+
+    Three properties are specific to Docker Compose configurations:
+
+    | Property | Required | Description |
+    |----------|----------|-------------|
+    | `dockerComposeFile` | Yes | Path or ordered array of paths to Docker Compose files, relative to `devcontainer.json`. Later files override earlier ones. |
+    | `service` | Yes | The name of the **main** service to connect to. Tools use this service as the primary development container. |
+    | `runServices` | No | Array of services to start and stop with the environment. Defaults to all services. |
+
+    ```json
+    {
+      "name": "App with database",
+      "dockerComposeFile": "docker-compose.yml",
+      "service": "app",
+      "runServices": ["app", "db"],
+      "workspaceFolder": "/workspace",
+      "postCreateCommand": "npm install"
+    }
+    ```
+
+    A matching `docker-compose.yml` might look like:
+
+    ```yaml
+    version: "3.8"
+    services:
+      app:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        volumes:
+          - ../..:/workspace:cached
+        command: sleep infinity
+
+      db:
+        image: postgres:15
+        environment:
+          POSTGRES_PASSWORD: devpassword
+          POSTGRES_DB: myapp
+    ```
+
+    You can also supply multiple Compose files to extend or override configuration:
+
+    ```json
+    {
+      "dockerComposeFile": [
+        "docker-compose.yml",
+        "docker-compose.dev.yml"
+      ],
+      "service": "app"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Image-based configuration
+
+Image-based configurations only reference an image reachable via `docker pull`. The `image` property is the only required parameter.
+
+```json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu"
+}
+```
+
+## Dockerfile-based configuration
+
+Dockerfile-based configurations use `build.dockerfile` to specify the Dockerfile path. You can use `build.context`, `build.args`, `build.options`, `build.target`, and `build.cacheFrom` to control the build.
+
+```json
+{
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": {
+      "VARIANT": "18"
+    },
+    "target": "dev",
+    "cacheFrom": "ghcr.io/myorg/myimage:latest"
+  }
+}
+```
+
+## Docker Compose-based configuration
+
+Docker Compose configurations require `dockerComposeFile` and `service`. The `runServices` property is optional and controls which services start with the environment.
+
+```json
+{
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "runServices": ["app", "db"]
+}
+```
+
+<Tip>
+  Use `runServices` to limit which services start when you open the dev container. Services not listed still exist in the Compose file but will not be started automatically.
+</Tip>

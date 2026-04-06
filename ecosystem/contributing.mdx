@@ -1,0 +1,111 @@
+---
+title: "Contributing to the spec"
+description: "How to propose changes, file issues, and engage with the Dev Container Specification community."
+---
+
+The Dev Container Specification is an open standard developed in public on GitHub. Contributions are welcome — whether you want to propose a new property, fix a schema error, or improve documentation.
+
+## Proposal workflow
+
+Changes to the specification go through a structured review process. New ideas start as proposals before they are formalized into the spec.
+
+<Steps>
+  <Step title="Open an issue">
+    File a proposal in the [devcontainers/spec](https://github.com/devcontainers/spec) repository to get early feedback before investing time in a formal writeup.
+  </Step>
+  <Step title="Document the proposal">
+    Formally describe the proposed change in terms of properties and their semantics. Format your proposal like the [`devcontainer.json` reference](https://aka.ms/devcontainer.json), which uses JSON with Comments (jsonc) format.
+
+    Include a property table like this:
+
+    | Property | Type | Description |
+    |----------|------|-------------|
+    | `image` | string | **Required** when using an image. The name of an image in a container registry that supporting tools should use to create the dev container. |
+
+    Active proposals live in the [`proposals/` folder](https://github.com/devcontainers/spec/tree/main/proposals) of the repository. Once finalized, they move to the [`docs/specs/` folder](https://github.com/devcontainers/spec/tree/main/docs/specs).
+  </Step>
+  <Step title="Open a schema PR">
+    Submit a PR to update the [devcontainer base schema](https://github.com/devcontainers/spec/blob/main/schemas/devContainer.base.schema.json) with your proposed additions. Include code or shell scripts demonstrating the implementation approach where applicable.
+  </Step>
+  <Step title="Update the reference docs">
+    Once there is discussion on your proposal, open a linked PR to update the [`devcontainer.json` reference doc](https://github.com/microsoft/vscode-docs/blob/main/docs/remote/devcontainerjson-reference.md). When your proposal is merged, the docs stay in sync with the spec.
+  </Step>
+</Steps>
+
+## Contributing tool-specific support
+
+Tool-specific properties belong in namespaces inside the `"customizations"` property. For example, VS Code properties are under `"vscode"`:
+
+```jsonc devcontainer.json
+// Configure tool-specific properties.
+"customizations": {
+  // Configure properties specific to VS Code.
+  "vscode": {
+    // Set default container-specific settings.json values on container create.
+    "settings": {},
+
+    // Additional VS Code specific properties...
+  }
+}
+```
+
+You can propose a new namespace for your tool and document any properties specific to it.
+
+## Review labels
+
+The spec repository uses the following labels to track proposals through the review process:
+
+| Label | Meaning |
+|-------|---------|
+| `proposal` | Issues under discussion, still collecting feedback. |
+| `finalization` | Proposals intended to become part of the spec. |
+
+Milestones follow a "Month Year" pattern (for example, January 2022). If a finalized proposal is added to a milestone, it is intended to be merged during that milestone.
+
+## Formatting guidelines
+
+When contributing to official docs or referencing dev containers in your projects:
+
+<AccordionGroup>
+  <Accordion title="Naming conventions">
+    - Refer to the spec as the **"Development Container Specification"** — all capitals, singular "Container"
+    - The term "dev container" should not be capitalized on its own; only capitalize when referring to an official tool title (like the VS Code Dev Containers extension)
+    - Use backticks for `devcontainer.json` as a file type
+    - Features and Templates should always be capitalized
+    - Refer to the CLI as the **"Dev Container CLI"**
+  </Accordion>
+  <Accordion title="Emphasis and formatting">
+    - Use `devcontainer.json` with backticks when referring to the file format
+    - Use bolding for emphasis throughout sections rather than bolding every instance of a term
+  </Accordion>
+</AccordionGroup>
+
+## Where to file issues
+
+File issues in the repository that owns the relevant code or content:
+
+<CardGroup cols={2}>
+  <Card title="Spec repository" icon="file-code" href="https://github.com/devcontainers/spec">
+    Proposals, spec changes, schema updates, and documentation for the core Development Container Specification.
+  </Card>
+  <Card title="Features and Templates" icon="puzzle-piece" href="https://github.com/devcontainers/features">
+    Issues with spec-maintained Features. For Templates, use the [devcontainers/templates](https://github.com/devcontainers/templates) repository.
+  </Card>
+  <Card title="Dev Container CLI" icon="terminal" href="https://github.com/devcontainers/cli">
+    CLI reference implementation bugs and non-spec-related feature requests.
+  </Card>
+  <Card title="CI integration" icon="circle-check" href="https://github.com/devcontainers/ci">
+    Issues with the GitHub Action and Azure DevOps Task for running dev containers in CI builds.
+  </Card>
+</CardGroup>
+
+## Community
+
+<CardGroup cols={2}>
+  <Card title="Community Slack" icon="slack" href="https://aka.ms/dev-container-community">
+    Connect with community members and maintainers. Ask questions, share feedback, or discuss how your team uses dev containers.
+  </Card>
+  <Card title="GitHub Discussions" icon="comment" href="https://github.com/devcontainers/spec/discussions">
+    A space to connect with the community without needing to file a spec change. Great for questions and general discussion.
+  </Card>
+</CardGroup>

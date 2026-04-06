@@ -1,0 +1,112 @@
+{
+  "projectType": "general",
+  "projectName": "Dev Container Specification",
+  "projectDescription": "An open specification for development containers that defines how to use a container as a full-featured, reproducible development environment.",
+  "theme": "aspen",
+  "primaryColor": "#0490ef",
+  "lightColor": "#0c5c8c",
+  "darkColor": "#1c1d1e",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Specification",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "spec/devcontainer-reference",
+              "spec/lifecycle",
+              "spec/orchestration"
+            ]
+          },
+          {
+            "group": "Configuration Reference",
+            "pages": [
+              "spec/devcontainerjson-reference",
+              "spec/image-metadata",
+              "spec/variables"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "spec/secrets-support",
+              "spec/gpu-host-requirement",
+              "spec/devcontainer-id-variable"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Ecosystem",
+        "groups": [
+          {
+            "group": "Features",
+            "pages": [
+              "ecosystem/features-overview",
+              "ecosystem/features-reference",
+              "ecosystem/features-distribution"
+            ]
+          },
+          {
+            "group": "Templates",
+            "pages": [
+              "ecosystem/templates-overview",
+              "ecosystem/templates-distribution"
+            ]
+          },
+          {
+            "group": "Authoring & Publishing",
+            "pages": [
+              "ecosystem/authoring-features",
+              "ecosystem/authoring-templates",
+              "ecosystem/lockfile"
+            ]
+          },
+          {
+            "group": "Tools & Integrations",
+            "pages": [
+              "ecosystem/supporting-tools",
+              "ecosystem/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "devcontainer.json format for defining reproducible development environments",
+    "Dev Container Features: self-contained, shareable units of tooling and configuration",
+    "Dev Container Templates: pre-built environment configurations for common tech stacks",
+    "Support for image-based, Dockerfile-based, and Docker Compose-based containers",
+    "Lifecycle scripts (onCreateCommand, postCreateCommand, postStartCommand, postAttachCommand)",
+    "Image metadata via devcontainer.metadata label for prebuilt container images",
+    "OCI registry-based distribution for Features and Templates",
+    "Cross-tool support: VS Code, GitHub Codespaces, IntelliJ, and more",
+    "Port forwarding, environment variable management, and user configuration",
+    "Host requirements specification for CPU, memory, and GPU"
+  ],
+  "publicApiSurface": [
+    "devcontainer.json — primary configuration format",
+    "devcontainer-feature.json — Feature metadata schema",
+    "devcontainer-template.json — Template metadata schema",
+    "devcontainer.metadata — container image label for prebuilt images",
+    "devContainer.base.schema.json — JSON schema for devcontainer.json",
+    "devContainerFeature.schema.json — JSON schema for Feature metadata",
+    "initializeCommand — lifecycle hook: runs on host during initialization",
+    "onCreateCommand — lifecycle hook: runs inside container on first creation",
+    "updateContentCommand — lifecycle hook: runs inside container when content updates",
+    "postCreateCommand — lifecycle hook: runs after container creation",
+    "postStartCommand — lifecycle hook: runs each time container starts",
+    "postAttachCommand — lifecycle hook: runs when tool attaches to container",
+    "features — devcontainer.json property for specifying Dev Container Features",
+    "customizations — devcontainer.json property for tool-specific configuration"
+  ]
+}

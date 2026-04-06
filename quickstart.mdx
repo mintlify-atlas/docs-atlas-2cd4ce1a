@@ -1,80 +1,267 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Create your first devcontainer.json, open it in a supporting tool, and start developing inside a container in minutes."
 ---
 
-## Get started in three steps
+This guide walks you through creating a dev container from scratch using an image-based configuration — the simplest way to get started. By the end you will have a running containerized development environment and know the common ways to extend it.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Install Docker">
+    Dev containers run on Docker. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for macOS or Windows, or Docker Engine on Linux.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Verify your installation:
 
-### Step 2: Deploy your changes
+    ```bash
+    docker --version
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Install a supporting tool">
+    You need a tool that implements the Dev Container Specification to build and open your container.
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    <Tabs>
+      <Tab title="VS Code Dev Containers">
+        1. Install [Visual Studio Code](https://code.visualstudio.com/).
+        2. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) (`ms-vscode-remote.remote-containers`).
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+        <Note>
+          The Dev Containers extension requires Docker Desktop (or Docker Engine on Linux) to be running before you open a container.
+        </Note>
+      </Tab>
+      <Tab title="GitHub Codespaces">
+        [GitHub Codespaces](https://docs.github.com/en/codespaces/overview) runs dev containers hosted in the cloud. No local Docker installation is required — push your `devcontainer.json` to a GitHub repository and open a codespace from the repository page.
+      </Tab>
+      <Tab title="Dev Container CLI">
+        The open-source CLI reference implementation works independently of any editor.
 
-### Step 3: Go live
+        ```bash
+        npm install -g @devcontainers/cli
+        ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+        Verify the installation:
 
-## Next steps
+        ```bash
+        devcontainer --version
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
 
-Now that you have your docs running, explore these key features:
+## Create your first dev container
+
+<Steps>
+  <Step title="Create the configuration file">
+    In the root of your project, create a `.devcontainer` directory and add a `devcontainer.json` file:
+
+    ```bash
+    mkdir .devcontainer
+    ```
+
+    Create `.devcontainer/devcontainer.json` with the following content:
+
+    ```json .devcontainer/devcontainer.json
+    {
+      "name": "Node.js",
+      "image": "mcr.microsoft.com/devcontainers/javascript-node:22"
+    }
+    ```
+
+    This is the minimal image-based configuration. The `image` property is the only required field — it names a container image that Docker can pull. The `name` property is optional but helps identify the container in your tool's UI.
+
+    <Tip>
+      The [Microsoft Container Registry](https://mcr.microsoft.com/) hosts a set of pre-built dev container images for popular runtimes. You can also use any image from Docker Hub, GitHub Container Registry, or any other accessible registry.
+    </Tip>
+  </Step>
+
+  <Step title="Open the container">
+    <Tabs>
+      <Tab title="VS Code Dev Containers">
+        1. Open your project folder in VS Code.
+        2. VS Code detects the `.devcontainer/devcontainer.json` file and shows a notification: **Reopen in Container**.
+        3. Click **Reopen in Container**, or open the Command Palette (`F1`) and run **Dev Containers: Reopen in Container**.
+
+        VS Code builds the container image (if needed), starts the container, and reconnects your editor inside it. The first open may take a minute while the image is pulled.
+
+        <Note>
+          If you've already built the container and connected to it, run **Dev Containers: Rebuild Container** from the Command Palette to pick up any changes to your `devcontainer.json`.
+        </Note>
+      </Tab>
+      <Tab title="GitHub Codespaces">
+        1. Push your project (including `.devcontainer/devcontainer.json`) to a GitHub repository.
+        2. On the repository page, click **Code** → **Codespaces** → **Create codespace on main** (or your branch).
+
+        GitHub builds the dev container and opens a browser-based editor connected to it. You can also connect your local VS Code to the codespace from the same menu.
+
+        <Note>
+          If you've already built a codespace and connected to it, run **Codespaces: Rebuild Container** from the Command Palette to pick up any changes you make.
+        </Note>
+      </Tab>
+      <Tab title="Dev Container CLI">
+        From your project root, run:
+
+        ```bash
+        devcontainer up --workspace-folder .
+        ```
+
+        This builds the image, starts the container, and mounts your workspace. To open a shell inside the running container:
+
+        ```bash
+        devcontainer exec --workspace-folder . bash
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Verify the environment">
+    Once connected, open a terminal inside the container and confirm the runtime is available:
+
+    ```bash
+    node --version
+    npm --version
+    ```
+
+    Your project files are mounted inside the container at `/workspaces/<project-name>` by default. Any edits you make — inside the container or on your host — are reflected immediately.
+
+    <Tip>
+      Source code is stored outside the container so your in-flight edits are preserved even if you rebuild or recreate the container.
+    </Tip>
+  </Step>
+</Steps>
+
+## Common next steps
+
+Once your basic container is running, you can extend it in several ways.
+
+### Add Features
+
+Features are self-contained units that install tools or runtimes into your container. Add them to `devcontainer.json` under the `features` key:
+
+```json .devcontainer/devcontainer.json
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+Rebuild the container after adding Features to apply them. Browse available Features at [containers.dev/features](https://containers.dev/features).
+
+### Add lifecycle scripts
+
+Run commands automatically at different points in the container lifecycle:
+
+```json .devcontainer/devcontainer.json
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install",
+  "postStartCommand": "npm run dev"
+}
+```
+
+| Property | When it runs |
+|---|---|
+| `onCreateCommand` | Once, immediately after the container is created for the first time |
+| `updateContentCommand` | After `onCreateCommand`, when new content is available in the source tree |
+| `postCreateCommand` | Once, after `updateContentCommand`, when the container is assigned to a user |
+| `postStartCommand` | Each time the container starts |
+| `postAttachCommand` | Each time a tool connects to the container |
+
+To run commands in parallel, use the object form:
+
+```json
+{
+  "postCreateCommand": {
+    "server": "npm start",
+    "db": ["mysql", "-u", "root", "-p", "my database"]
+  }
+}
+```
+
+See [lifecycle scripts](/spec/lifecycle) for the complete reference.
+
+### Add tool customizations
+
+Configure editor-specific settings inside the `customizations` object. For VS Code, you can pre-install extensions and set default settings:
+
+```jsonc .devcontainer/devcontainer.json
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install",
+  "customizations": {
+    // Configure properties specific to VS Code.
+    "vscode": {
+      // Set *default* container specific settings.json values on container create.
+      "settings": {},
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
+```
+
+Customizations are tool-specific and ignored by tools that do not implement them. This keeps your `devcontainer.json` portable.
+
+### Forward ports
+
+If your application listens on a port inside the container, use `forwardPorts` to make it accessible from your local machine:
+
+```json .devcontainer/devcontainer.json
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "forwardPorts": [3000]
+}
+```
+
+### Use environment variables
+
+Set environment variables for the container with `containerEnv`, or for the tool and its processes with `remoteEnv`:
+
+```json .devcontainer/devcontainer.json
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "containerEnv": {
+    "MY_VARIABLE": "${localEnv:MY_VARIABLE}"
+  }
+}
+```
+
+The `${localEnv:VARIABLE_NAME}` syntax reads a value from your host machine's environment and passes it into the container. See [variables](/spec/variables) for all supported variable expressions.
+
+<Warning>
+`containerEnv` variables are static for the life of the container. You must rebuild the container to update their values. Use `remoteEnv` for values that may change without a rebuild.
+</Warning>
+
+## What to explore next
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Configuration reference" icon="sliders" href="/spec/devcontainerjson-reference">
+    Every property available in devcontainer.json, with types and descriptions.
+  </Card>
+  <Card title="Lifecycle scripts" icon="timeline" href="/spec/lifecycle">
+    Full reference for all lifecycle hooks and their execution order.
+  </Card>
+  <Card title="Features overview" icon="puzzle-piece" href="/ecosystem/features-overview">
+    Learn how Features work and how to find ones for your stack.
+  </Card>
+  <Card title="Orchestration options" icon="network-wired" href="/spec/orchestration">
+    Use a Dockerfile or Docker Compose instead of a plain image.
+  </Card>
+  <Card title="Image metadata" icon="tag" href="/spec/image-metadata">
+    Embed dev container config into prebuilt images.
+  </Card>
+  <Card title="Supporting tools" icon="toolbox" href="/ecosystem/supporting-tools">
+    All editors and services that implement the spec.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

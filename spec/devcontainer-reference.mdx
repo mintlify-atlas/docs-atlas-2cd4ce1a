@@ -1,0 +1,202 @@
+---
+title: "Dev Container reference"
+description: "Core concepts of the Dev Container Specification: what development containers are, how metadata is structured, environment variables, mounts, and users."
+---
+
+A **development container** is a container in which a user can develop an application. The purpose of the **Dev Container Specification** is to provide a way to enrich containers with the content and metadata necessary to enable development inside them. These container environments should be easy to use, create, and recreate.
+
+An **environment** is a logical instance of one or more development containers, along with any needed sidecar containers. An environment is based on one set of metadata that can be managed as a single unit. You can create multiple environments from the same configuration metadata for different purposes.
+
+## Metadata
+
+Development containers let you define a repeatable development environment for a user or team that includes the execution environment the application needs. A development container defines an environment in which you develop your application before you are ready to deploy.
+
+Working inside a development container can require additional **metadata** to drive tooling or service experiences beyond what a production container needs. Providing a structured and consistent form for this metadata is a core part of this specification.
+
+### devcontainer.json
+
+Metadata is stored in a JSON with Comments file called `devcontainer.json`. Tools using it should expect to find the file in one of the following locations, in order of precedence:
+
+<Steps>
+  <Step title=".devcontainer/devcontainer.json">
+    The most common location, inside a `.devcontainer` folder at the root of your project.
+  </Step>
+  <Step title=".devcontainer.json">
+    A single file at the project root, without a dedicated folder.
+  </Step>
+  <Step title=".devcontainer/&lt;folder&gt;/devcontainer.json">
+    A sub-folder one level deep inside `.devcontainer`, allowing multiple configurations in a single repository.
+  </Step>
+</Steps>
+
+<Note>
+  These files may exist in more than one location. Consider providing a mechanism for users to select one when appropriate.
+</Note>
+
+### Image metadata label
+
+Certain dev container metadata properties can also be stored in an image as a `devcontainer.metadata` label. This lets them be embedded in prebuilt images so the image and its configuration are self-contained. The label value is a JSON string representing an array of metadata snippets — one entry per [Dev Container Feature](https://containers.dev/features) and `devcontainer.json`:
+
+```json
+[
+  {
+    "id": "ghcr.io/devcontainers/features/node:1",
+    "init": false,
+    "privileged": false,
+    "capAdd": [],
+    "securityOpt": [],
+    "entrypoint": "",
+    "mounts": [],
+    "customizations": {}
+  }
+]
+```
+
+Using an array allows subsequent image builds to append changes rather than merge at build time, which improves compatibility with arbitrary image build systems.
+
+#### Merge logic
+
+When a container is created, image label metadata is merged with any local `devcontainer.json` contents using the following rules:
+
+| Property | Type | Merge logic |
+|----------|------|-------------|
+| `id` | `string` | Not merged. |
+| `init` | `boolean` | `true` if at least one is `true`. |
+| `privileged` | `boolean` | `true` if at least one is `true`. |
+| `capAdd` | `string[]` | Union of all arrays without duplicates. |
+| `securityOpt` | `string[]` | Union of all arrays without duplicates. |
+| `entrypoint` | `string` | Collected list of all entrypoints. |
+| `mounts` | `(string \| object)[]` | Collected list. Last source wins on conflicts. |
+| `onCreateCommand` | `string \| string[] \| object` | Collected list of all commands. |
+| `updateContentCommand` | `string \| string[] \| object` | Collected list of all commands. |
+| `postCreateCommand` | `string \| string[] \| object` | Collected list of all commands. |
+| `postStartCommand` | `string \| string[] \| object` | Collected list of all commands. |
+| `postAttachCommand` | `string \| string[] \| object` | Collected list of all commands. |
+| `waitFor` | enum | Last value wins. |
+| `customizations` | object | Merging is left to tools. |
+| `containerUser` | `string` | Last value wins. |
+| `remoteUser` | `string` | Last value wins. |
+| `userEnvProbe` | `string` | Last value wins. |
+| `remoteEnv` | object | Per variable, last value wins. |
+| `containerEnv` | object | Per variable, last value wins. |
+| `overrideCommand` | `boolean` | Last value wins. |
+| `portsAttributes` | map | Per port (not per port attribute), last value wins. |
+| `otherPortsAttributes` | object | Last value wins (not per port attribute). |
+| `forwardPorts` | `(number \| string)[]` | Union without duplicates. Last one wins when mapping changes. |
+| `shutdownAction` | `string` | Last value wins. |
+| `updateRemoteUserUID` | `boolean` | Last value wins. |
+| `hostRequirements` | object | Max value wins per field (`cpus`, `memory`, `storage`, `gpu`). |
+
+Variables in string values are substituted at the time the value is applied. When order matters, `devcontainer.json` is considered last.
+
+## Environment variables
+
+Environment variables can be set at different points in the dev container lifecycle. The specification supports two classes:
+
+<CardGroup cols={2}>
+  <Card title="Container env vars" icon="box">
+    Set on the container itself at creation time and available throughout its entire lifecycle. Configure using `containerEnv` for image and Dockerfile scenarios, or using `env` in Docker Compose files.
+  </Card>
+  <Card title="Remote env vars" icon="terminal">
+    Set by the supporting tool as part of configuring the runtime environment. Configure using `remoteEnv`. These can change during the lifetime of the container and are added after the container's `ENTRYPOINT` fires.
+  </Card>
+</CardGroup>
+
+This separation lets you use information not available at image build time and simplifies updating the environment for project-specific needs without modifying an image.
+
+```json
+{
+  "containerEnv": {
+    "MY_VARIABLE": "${localEnv:MY_VARIABLE}"
+  },
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/some/other/path"
+  }
+}
+```
+
+### userEnvProbe
+
+The `userEnvProbe` property tells implementing tools to "probe" for expected environment variables using the specified type of shell. This emulates developer-expected behavior around values added to profile and rc files.
+
+| Value | Shell probed |
+|-------|-------------|
+| `none` | No probing. |
+| `interactiveShell` | Interactive shell (e.g., picks up `~/.bashrc`). |
+| `loginShell` | Login shell (e.g., picks up `~/.profile`). |
+| `loginInteractiveShell` | Both login and interactive (default). |
+
+<Tip>
+  `userEnvProbe` does not require that shell type be used for all sub-processes. Probed variables are merged with remote environment variables for any processes the implementer injects after container creation.
+</Tip>
+
+## Mounts
+
+Mounts give containers access to the underlying host machine, let containers share data, and persist information across container lifecycles.
+
+A default **workspace mount** is always included so your source code is accessible from inside the container. Source code is stored outside the container so that in-flight edits can be recovered or a new container can be created if the existing one no longer starts.
+
+<Note>
+  The workspace mount defaults to `/workspace` inside the container. While it is often a bind mount, this is not required by the specification. Cloud environments may not have access to the same filesystem as a local machine.
+</Note>
+
+### workspaceFolder and workspaceMount
+
+| Property | Description |
+|----------|-------------|
+| `workspaceMount` | Overrides the default local mount point for the workspace (image and Dockerfile scenarios). Requires `workspaceFolder` to also be set. |
+| `workspaceFolder` | Sets the default folder opened inside the container. Typically the mount point or a sub-folder under it. |
+
+```json
+{
+  "workspaceMount": "source=${localWorkspaceFolder}/sub-folder,target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace"
+}
+```
+
+<Tip>
+  Setting `workspaceFolder` to a sub-folder is especially useful for monorepos where you need the `.git` folder for source control but developers work within a specific sub-project.
+</Tip>
+
+This folder should point to the root of a repository (where the `.git` folder is found) so that source control operations work correctly inside the container.
+
+## Users
+
+Users control the permissions of applications executed in containers. The specification defines two types:
+
+<CardGroup cols={2}>
+  <Card title="Container user" icon="user">
+    The user for all operations that run inside the container. Set in the container image, using `containerUser` for image and Dockerfile scenarios, or using the `user` property in Docker Compose files.
+  </Card>
+  <Card title="Remote user" icon="user-gear">
+    The user for running lifecycle scripts and the user tools and editors use when connecting to the container. Set with `remoteUser` in all scenarios. Defaults to the container user.
+  </Card>
+</CardGroup>
+
+```json
+{
+  "containerUser": "root",
+  "remoteUser": "vscode"
+}
+```
+
+This separation lets the container `ENTRYPOINT` execute with different permissions than the developer, and allows developers to switch users without recreating the container.
+
+### updateRemoteUserUID
+
+On Linux, if `containerUser` or `remoteUser` is specified, you can set `updateRemoteUserUID` to `true` to have the user's UID and GID updated to match the local user's UID/GID. This prevents permission problems with bind mounts.
+
+```json
+{
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true
+}
+```
+
+<Note>
+  Implementations may skip UID/GID syncing if they do not use bind mounts on Linux, or if they use a container engine that handles this translation automatically.
+</Note>
+
+## Project workspace folder
+
+The **project workspace folder** is where an implementing tool begins searching for `devcontainer.json` files. If the target project uses git, the project workspace folder is typically the root of the git repository (the directory containing the `.git` folder).

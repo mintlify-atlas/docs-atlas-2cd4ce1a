@@ -1,0 +1,182 @@
+---
+title: "Supporting tools and services"
+description: "Editors, tools, and cloud services that implement the Dev Container Specification."
+---
+
+This page outlines tools and services that support the Development Container Specification, including the `devcontainer.json` format. A `devcontainer.json` file in your project tells supporting tools and services how to access or create a dev container with a well-defined tool and runtime stack.
+
+While most [dev container properties](/spec/devcontainerjson-reference) apply to any supporting tool or service, a few are specific to certain tools. Those product-specific properties and limitations are documented below.
+
+<Note>
+  For the latest list of supporting tools, see [containers.dev/supporting](https://containers.dev/supporting).
+</Note>
+
+## Editors
+
+### Visual Studio Code
+
+The [VS Code Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) lets you use a container as a full-featured development environment. You can open any folder inside (or mounted into) a container and use VS Code's full feature set, including IntelliSense, debugging, and extensions.
+
+VS Code-specific properties are placed under a `vscode` namespace inside `customizations`:
+
+```jsonc devcontainer.json
+"customizations": {
+  // Configure properties specific to VS Code.
+  "vscode": {
+    // Set default container-specific settings.json values on container create.
+    "settings": {},
+    "extensions": []
+  }
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `extensions` | array | Extension IDs to install inside the container when it is created. Defaults to `[]`. |
+| `settings` | object | Default `settings.json` values added to the container-specific settings file. Defaults to `{}`. |
+
+<Tip>
+  If you've already built a container and connected to it, run **Dev Containers: Rebuild Container** from the Command Palette to pick up any `devcontainer.json` changes.
+</Tip>
+
+#### Limitations
+
+Some properties have specific limitations in the Dev Containers extension:
+
+| Property or variable | Type | Description |
+|----------|------|-------------|
+| `workspaceMount` | string | Not yet supported when using Clone Repository in Container Volume. |
+| `workspaceFolder` | string | Not yet supported when using Clone Repository in Container Volume. |
+| `${localWorkspaceFolder}` | Any | Not yet supported when using Clone Repository in Container Volume. |
+| `${localWorkspaceFolderBasename}` | Any | Not yet supported when using Clone Repository in Container Volume. |
+
+### Visual Studio
+
+Visual Studio added dev container support in Visual Studio 2022 17.4 for C++ projects using CMake Presets. It is part of the **Linux and embedded development with C++** workload, so make sure it is selected in your VS installation. Visual Studio manages the lifecycle of dev containers as you work, treating them as remote targets in a similar way to other Linux or WSL targets.
+
+See the [announcement blog post](https://devblogs.microsoft.com/cppblog/dev-containers-for-c-in-visual-studio/) for more details.
+
+### IntelliJ IDEA
+
+IntelliJ IDEA supports dev containers that can be run remotely via an SSH connection or locally using Docker. See the [IntelliJ IDEA documentation](https://www.jetbrains.com/help/idea/connect-to-devcontainer.html) for setup instructions.
+
+### Emacs
+
+[GNU Emacs](https://www.gnu.org/software/emacs/) supports dev containers through the community extension [devcontainer.el](https://johannes-mueller.github.io/devcontainer.el/). The extension is available through the [MELPA](https://melpa.org) package registry and can also be installed directly from [source on GitHub](https://github.com/johannes-mueller/devcontainer.el).
+
+---
+
+## Tools
+
+<CardGroup cols={2}>
+  <Card title="Dev Container CLI" icon="terminal" href="https://github.com/devcontainers/cli">
+    The open-source reference CLI implementation of the Dev Container Specification. Supports Docker Compose and single-container setups.
+  </Card>
+  <Card title="VS Code extension CLI" icon="code" href="https://code.visualstudio.com/docs/remote/devcontainer-cli">
+    A CLI built into the VS Code Dev Containers extension. Can also be installed standalone from the command line.
+  </Card>
+  <Card title="Cachix devenv" icon="snowflake" href="https://devenv.sh/">
+    Automatically generates a `.devcontainer.json` file from your devenv configuration so you can use it with any Dev Container Spec-supporting tool. See the [devenv documentation](https://devenv.sh/integrations/codespaces-devcontainer/) for details.
+  </Card>
+  <Card title="Jetify Devbox" icon="box" href="https://www.jetify.com/devbox/">
+    A [Nix](https://nixos.org/)-based tool for creating reproducible development environments. The [Jetify VS Code extension](https://marketplace.visualstudio.com/items?itemName=jetpack-io.devbox) integrates Devbox with any Dev Container Spec-supporting tool or service.
+  </Card>
+</CardGroup>
+
+---
+
+## Cloud services
+
+### GitHub Codespaces
+
+A [codespace](https://docs.github.com/en/codespaces/overview) is a cloud-hosted development environment running on VM-based compute provided by GitHub.com, configurable from 2 to 32 cores. You can connect from the browser or locally using VS Code.
+
+GitHub Codespaces supports [VS Code properties](#visual-studio-code) when connected through the web editor or VS Code, plus a set of Codespaces-specific properties in the `codespaces` namespace.
+
+<Tip>
+  If you've already built a codespace and connected to it, run **Codespaces: Rebuild Container** from the Command Palette to pick up any `devcontainer.json` changes.
+</Tip>
+
+<Tip>
+  Codespaces automatically implements a `workspaceFolder` mount in Docker Compose scenarios.
+</Tip>
+
+#### Repository permissions
+
+To grant a codespace access to other repositories, use the `repositories` and `permissions` properties. See the [Codespaces documentation](https://docs.github.com/en/codespaces/managing-your-codespaces/managing-repository-access-for-your-codespaces) for details.
+
+```jsonc devcontainer.json
+"customizations": {
+  // Configure properties specific to Codespaces.
+  "codespaces": {
+    "repositories": {
+      "my_org/my_repo": {
+        "permissions": {
+          "issues": "write"
+        }
+      }
+    }
+  }
+}
+```
+
+#### Open files on startup
+
+Specify which files are opened when the codespace is created. Paths are relative to the repository root and files open in order, with the first file activated.
+
+```jsonc devcontainer.json
+"customizations": {
+  // Configure properties specific to Codespaces.
+  "codespaces": {
+    "openFiles": [
+      "README",
+      "src/index.js"
+    ]
+  }
+}
+```
+
+#### Disable automatic configuration
+
+Codespaces performs default setup when `devcontainer.json` does not specify a `postCreateCommand`. To disable this behavior:
+
+```jsonc devcontainer.json
+"customizations": {
+  // Configure properties specific to Codespaces.
+  "codespaces": {
+    "disableAutomaticConfiguration": true
+  }
+}
+```
+
+<Note>
+  Codespaces reads the `customizations.codespaces` and `hostRequirements` properties from `devcontainer.json`, not from image metadata.
+</Note>
+
+#### Limitations
+
+Some properties apply differently in Codespaces:
+
+| Property or variable | Type | Description |
+|----------|------|-------------|
+| `mounts` | array | Codespaces ignores `bind` mounts except for the Docker socket. Volume mounts are still allowed. |
+| `forwardPorts` | array | The `"host:port"` variation is not yet supported. |
+| `portsAttributes` | object | The `"host:port"` variation is not yet supported. |
+| `shutdownAction` | enum | Does not apply to Codespaces. |
+| `${localEnv:VARIABLE_NAME}` | Any | The host is in the cloud rather than your local machine. |
+| `customizations.codespaces` | object | Read from `devcontainer.json`, not image metadata. |
+| `hostRequirements` | object | Read from `devcontainer.json`, not image metadata. |
+
+### CodeSandbox
+
+[CodeSandbox](https://codesandbox.io/) provides cloud development environments running on a microVM architecture. When you import a GitHub repository, CodeSandbox automatically provisions a dedicated environment for every branch. Using memory snapshotting, it can resume and branch an environment in under two seconds.
+
+CodeSandbox supports multiple editors: the CodeSandbox web editor, VS Code, and the CodeSandbox iOS app.
+
+### DevPod
+
+[DevPod](https://github.com/loft-sh/devpod) is a client-only tool that creates reproducible developer environments based on a `devcontainer.json` on any backend. Each environment runs in a container. Through DevPod providers, environments can be created on your local computer, a Kubernetes cluster, any reachable remote machine, or in a cloud VM.
+
+### Ona (formerly Gitpod)
+
+[Ona](https://ona.com/) (formerly Gitpod) provides secure, ephemeral development environments that run in the cloud or in your VPC, enabling humans and agents to collaborate on software projects. See the [Ona Dev Container docs](https://ona.com/docs/ona/configuration/devcontainer/overview) for details on constraints, customization, and automation options.

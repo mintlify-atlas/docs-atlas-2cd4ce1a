@@ -1,0 +1,199 @@
+---
+title: "Features overview"
+description: "Dev Container Features are self-contained, shareable units of installation code and development container configuration that let you quickly add tooling, runtimes, and libraries to any dev container."
+---
+
+**Dev Container Features** are self-contained, shareable units of installation code and development container configuration. Referencing one of them lets you quickly and easily add more tooling, runtime, or library "Features" into your development container for you or your collaborators to use.
+
+<Note>
+  While Features may be installed on top of any base image, the implementation of a Feature might restrict it to a subset of possible base images. For example, some Features may be authored to work with a certain Linux distro (e.g. Debian-based images that use the `apt` package manager).
+</Note>
+
+Feature metadata is captured by a `devcontainer-feature.json` file in the root folder of the Feature.
+
+<CardGroup cols={2}>
+  <Card title="Features reference" icon="file-code" href="/ecosystem/features-reference">
+    Full metadata reference for `devcontainer-feature.json`, options, lifecycle hooks, and option resolution.
+  </Card>
+  <Card title="Features distribution" icon="cloud-arrow-up" href="/ecosystem/features-distribution">
+    How to package and publish Features to OCI registries for others to use.
+  </Card>
+</CardGroup>
+
+## Using Features in devcontainer.json
+
+Features are referenced in `devcontainer.json` under the top-level `features` object. You can specify any number of Features — at build time they are installed in an order determined by the [installation order rules](#installation-order).
+
+Each Feature is a key/value pair where the key is the Feature identifier and the value is an object of options (or an empty object for defaults).
+
+```jsonc
+// .devcontainer/devcontainer.json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11",
+      "pip": true
+    }
+  }
+}
+```
+
+As a shorthand, you can pass a single string value instead of an object. The string is mapped to an option named `version`. These two forms are equivalent:
+
+```jsonc
+"features": {
+  "ghcr.io/owner/repo/go": "1.21"
+}
+```
+
+```jsonc
+"features": {
+  "ghcr.io/owner/repo/go": {
+    "version": "1.21"
+  }
+}
+```
+
+## Feature identifier formats
+
+The identifier format tells the supporting tool where to locate and download the Feature.
+
+| Format | Description | Example |
+| :--- | :--- | :--- |
+| `<oci-registry>/<namespace>/<feature>[:<semver>]` | Feature published to an OCI registry | `ghcr.io/devcontainers/features/go:1` |
+| `https://<uri-to-tgz>` | Direct HTTPS URI to a `.tgz` tarball | `https://github.com/user/repo/releases/devcontainer-feature-go.tgz` |
+| `./<path-to-feature-dir>` | Relative path to a local folder containing `devcontainer-feature.json` | `./myGoFeature` |
+
+Feature identifiers are case-insensitive and should be normalized to lowercase.
+
+<Note>
+  The relative path for local Features is always relative to the folder containing `devcontainer.json`, regardless of the host operating system. Use unix-style syntax (e.g. `./myFeature`).
+</Note>
+
+A complete example using all three identifier formats:
+
+```jsonc
+"features": {
+  "ghcr.io/user/repo/go": {},
+  "ghcr.io/user/repo1/go:1": {},
+  "ghcr.io/user/repo2/go:latest": {},
+  "https://github.com/user/repo/releases/devcontainer-feature-go.tgz": {
+    "optionA": "value"
+  },
+  "./myGoFeature": {
+    "optionA": true,
+    "optionB": "hello",
+    "version": "1.0.0"
+  }
+}
+```
+
+## Versioning
+
+Each Feature is individually versioned according to the [semver specification](https://semver.org/). The `version` property in `devcontainer-feature.json` defines the current version.
+
+- If you omit a version tag in the identifier, `:latest` is added implicitly.
+- Pin to a specific version by appending it to the Feature identifier (e.g. `ghcr.io/devcontainers/features/go:1.2.3`).
+- Tooling will not republish a Feature if that exact version has already been published, but it must republish major and minor versions in accordance with semver.
+
+```jsonc
+"features": {
+  // Uses latest
+  "ghcr.io/devcontainers/features/go": {},
+  // Pins to major version 1
+  "ghcr.io/devcontainers/features/node:1": {},
+  // Pins to exact patch version
+  "ghcr.io/devcontainers/features/python:1.2.3": {}
+}
+```
+
+## Installation order
+
+By default, Features are installed in an order determined as optimal by the implementing tool. You can influence or control this order using three mechanisms:
+
+### dependsOn
+
+The `dependsOn` property in `devcontainer-feature.json` declares **hard dependencies** — Features that must be installed before the declaring Feature. Dependencies are resolved recursively.
+
+```json
+{
+  "id": "myFeature",
+  "version": "1.0.0",
+  "dependsOn": {
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
+  }
+}
+```
+
+If any dependency cannot be satisfied (e.g. circular dependency, resolution failure), the entire dev container creation fails.
+
+### installsAfter
+
+The `installsAfter` property in `devcontainer-feature.json` declares **soft dependencies** — it influences installation order only for Features that are already queued to be installed. Unlike `dependsOn`, it is not evaluated recursively, and the referenced Features cannot specify options or version pins.
+
+```json
+{
+  "id": "myFeature",
+  "version": "1.0.0",
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/node",
+    "ghcr.io/devcontainers/features/python"
+  ]
+}
+```
+
+### overrideFeatureInstallOrder
+
+The `overrideFeatureInstallOrder` property in `devcontainer.json` lets users explicitly control the order Features are installed. Feature IDs listed earlier in the array are installed first (once their dependencies are satisfied). This property cannot create an order that contradicts the dependency graph.
+
+```jsonc
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {},
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/python:1": {}
+  },
+  "overrideFeatureInstallOrder": [
+    "ghcr.io/devcontainers/features/python",
+    "ghcr.io/devcontainers/features/node",
+    "ghcr.io/devcontainers/features/go"
+  ]
+}
+```
+
+<Tip>
+  `overrideFeatureInstallOrder` entries do not specify a version. The tool matches them to the Features in the `features` object by their base identifier (version omitted).
+</Tip>
+
+## User environment variables
+
+Feature install scripts run as `root` and sometimes need to know which user account the dev container will be used with. The following environment variables are automatically passed to every Feature's `install.sh` script:
+
+| Variable | Description |
+| :--- | :--- |
+| `_REMOTE_USER` | The configured `remoteUser`. If not set, falls back to `_CONTAINER_USER`. |
+| `_CONTAINER_USER` | The container's user as determined by the image or Dockerfile `USER` instruction. |
+| `_REMOTE_USER_HOME` | Home directory of `_REMOTE_USER`. |
+| `_CONTAINER_USER_HOME` | Home directory of `_CONTAINER_USER`. |
+
+The container user can be set by `containerUser` in `devcontainer.json` and image metadata, `user` in `docker-compose.yml`, the `USER` Dockerfile instruction, or inherited from the base image.
+
+```bash
+#!/usr/bin/env bash
+# Example install.sh using user environment variables
+
+echo "Installing for user: ${_REMOTE_USER}"
+echo "User home: ${_REMOTE_USER_HOME}"
+
+# Run commands as the remote user
+su "${_REMOTE_USER}" -c "some-user-level-command"
+```

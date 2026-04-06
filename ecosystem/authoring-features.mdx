@@ -1,0 +1,318 @@
+---
+title: "Authoring Features"
+description: "A practical guide to creating and publishing Dev Container Features, from folder structure to OCI registry distribution."
+---
+
+Dev Container Features are self-contained, shareable units of installation code and configuration. Each Feature adds tooling, runtimes, or libraries to a development container.
+
+## Folder structure
+
+A Feature lives in its own folder and requires at minimum two files:
+
+```
+feature/
+├── devcontainer-feature.json
+├── install.sh
+└── (other files)
+```
+
+The folder name must match the `id` field in `devcontainer-feature.json`. All files in the folder are packaged and distributed together.
+
+When hosting multiple Features in a single repository, use a `src/` directory:
+
+```
+src/
+├── go/
+│   ├── devcontainer-feature.json
+│   └── install.sh
+├── python/
+│   ├── devcontainer-feature.json
+│   └── install.sh
+test/
+├── go/
+│   └── test.sh
+└── python/
+    └── test.sh
+```
+
+## Authoring workflow
+
+<Steps>
+  <Step title="Create the metadata file">
+    Create `devcontainer-feature.json` in your Feature folder. The `id`, `version`, and `name` fields are required; all other fields are optional.
+
+    ```json
+    {
+      "id": "my-tool",
+      "version": "1.0.0",
+      "name": "My Tool",
+      "description": "Installs my-tool and configures the environment.",
+      "documentationURL": "https://github.com/myorg/features/tree/main/src/my-tool",
+      "options": {
+        "version": {
+          "type": "string",
+          "enum": ["latest", "2.0", "1.9"],
+          "default": "latest",
+          "description": "Select a version of my-tool to install."
+        }
+      }
+    }
+    ```
+
+    The `id` must be lowercase and unique within the repository.
+  </Step>
+
+  <Step title="Write the install.sh script">
+    Create `install.sh` as the entrypoint script. It runs as `root` during the container image build.
+
+    ```bash
+    #!/usr/bin/env bash
+    set -e
+
+    VERSION=${VERSION:-"latest"}
+
+    echo "Installing my-tool version: $VERSION"
+
+    # Install as root
+    apt-get update && apt-get install -y curl
+
+    # Switch to non-root user for user-scoped operations
+    su ${_REMOTE_USER} -c "echo 'Configuring for user ${_REMOTE_USER}'"
+    ```
+
+    <Note>
+      Set the execute bit and invoke the script directly so the correct shell is used:
+      `chmod +x install.sh && ./install.sh`
+    </Note>
+
+    Use a shell available by default in your target distributions — `bash` for Debian/Ubuntu/Fedora, `sh` for Alpine. If your Feature requires a different shell, use `install.sh` to install it first, then invoke a secondary script.
+  </Step>
+
+  <Step title="Declare options">
+    Options are declared in `devcontainer-feature.json` under the `options` key. Each option ID is converted to an all-caps environment variable available in `install.sh`.
+
+    ```json
+    {
+      "options": {
+        "version": {
+          "type": "string",
+          "enum": ["latest", "3.10", "3.9", "3.8", "3.7", "3.6"],
+          "default": "latest",
+          "description": "Select a Python version to install."
+        },
+        "pip": {
+          "type": "boolean",
+          "default": true,
+          "description": "Installs pip"
+        },
+        "optimize": {
+          "type": "boolean",
+          "default": true,
+          "description": "Optimize python installation"
+        }
+      }
+    }
+    ```
+
+    If a user's `devcontainer.json` sets `"version": "3.10"` and `"pip": false`, the following environment variables are passed to `install.sh`:
+
+    ```bash
+    VERSION="3.10"
+    PIP="false"
+    OPTIMIZE="true"   # omitted by user, defaults applied
+    ```
+
+    Use `proposals` instead of `enum` when you want to suggest values but still allow free-form input.
+  </Step>
+
+  <Step title="Use user environment variables">
+    Feature scripts run as `root`. Four environment variables are always provided to help configure the environment for the actual container user:
+
+    | Variable | Description |
+    | :--- | :--- |
+    | `_REMOTE_USER` | The configured `remoteUser` (falls back to `_CONTAINER_USER` if not set) |
+    | `_CONTAINER_USER` | The container's user |
+    | `_REMOTE_USER_HOME` | Home directory of `_REMOTE_USER` |
+    | `_CONTAINER_USER_HOME` | Home directory of `_CONTAINER_USER` |
+
+    Use `su` to run commands as the non-root user:
+
+    ```bash
+    #!/usr/bin/env bash
+    set -e
+
+    # Run as root
+    apt-get update && apt-get install -y some-package
+
+    # Run as the remote user
+    su ${_REMOTE_USER} -c "some-package --setup --user-dir ${_REMOTE_USER_HOME}/.some-package"
+    ```
+
+    <Tip>
+      `su` lets you perform both root and non-root operations even when `sudo` is absent from the base image.
+    </Tip>
+  </Step>
+
+  <Step title="Add lifecycle hooks">
+    Features can contribute lifecycle commands that run after the container is built. These mirror the lifecycle hooks available in `devcontainer.json`.
+
+    ```json
+    {
+      "id": "my-tool",
+      "version": "1.0.0",
+      "name": "My Tool",
+      "onCreateCommand": "my-tool init",
+      "postCreateCommand": "/usr/local/share/my-tool/post-create.sh",
+      "postAttachCommand": {
+        "server": "my-tool serve --background",
+        "logger": "my-tool logs --follow"
+      }
+    }
+    ```
+
+    <AccordionGroup>
+      <Accordion title="Available lifecycle hooks">
+        | Hook | Description |
+        | :--- | :--- |
+        | `onCreateCommand` | Runs once when the container is first created |
+        | `updateContentCommand` | Runs when the content of the project changes |
+        | `postCreateCommand` | Runs after the container is created |
+        | `postStartCommand` | Runs each time the container starts |
+        | `postAttachCommand` | Runs each time a tool attaches to the container |
+      </Accordion>
+      <Accordion title="Execution order">
+        For each lifecycle hook, Feature commands run in Feature installation order and always **before** the user's `devcontainer.json` lifecycle commands.
+
+        If a Feature provides a hook using the object syntax (multiple named commands), those commands run in parallel. Commands from subsequent Features and `devcontainer.json` only start after the parallel group completes.
+      </Accordion>
+    </AccordionGroup>
+
+    <Warning>
+      If you bundle a script with your Feature and reference it in a lifecycle hook, copy the script to a persistent location (outside `/tmp`) during `install.sh`. Supporting tools are not required to keep Feature install scripts around after the build.
+    </Warning>
+
+    ```bash
+    # install.sh — copy the bundled script to a persistent path
+    cp ./post-create.sh /usr/local/share/my-tool/post-create.sh
+    chmod +x /usr/local/share/my-tool/post-create.sh
+    ```
+  </Step>
+
+  <Step title="Declare dependencies">
+    Use `dependsOn` for hard dependencies that must be installed before your Feature, and `installsAfter` for soft ordering hints.
+
+    **Hard dependency with `dependsOn`:**
+
+    ```json
+    {
+      "id": "my-tool",
+      "version": "1.0.0",
+      "name": "My Tool",
+      "dependsOn": {
+        "ghcr.io/devcontainers/features/node:1": {},
+        "ghcr.io/devcontainers/features/go:1": {
+          "version": "1.21"
+        }
+      }
+    }
+    ```
+
+    All Features in `dependsOn` are automatically added to the installation set and installed before your Feature. Dependencies are evaluated recursively.
+
+    **Soft ordering with `installsAfter`:**
+
+    ```json
+    {
+      "id": "my-tool",
+      "version": "1.0.0",
+      "name": "My Tool",
+      "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils",
+        "ghcr.io/devcontainers/features/node"
+      ]
+    }
+    ```
+
+    `installsAfter` only influences ordering for Features that are already queued to be installed — it does not add them to the installation set.
+  </Step>
+
+  <Step title="Publish to an OCI registry">
+    Features are distributed as tarballs pushed to an OCI registry. Use the [Dev Container CLI](https://github.com/devcontainers/cli) or the [Dev Container Publish GitHub Action](https://github.com/devcontainers/action).
+
+    Each Feature is published following the naming convention `<registry>/<namespace>/<id>[:version]`:
+
+    ```bash
+    devcontainer features publish \
+      --namespace myorg/my-features \
+      --registry ghcr.io \
+      ./src
+    ```
+
+    The tool publishes major, minor, and patch version tags automatically (e.g. `1`, `1.2`, `1.2.3`, `latest`).
+
+    <Note>
+      The `namespace` is typically `<owner>/<repo>` from your source repository. It must be lowercase.
+    </Note>
+
+    Users then reference your Feature in their `devcontainer.json`:
+
+    ```json
+    {
+      "features": {
+        "ghcr.io/myorg/my-features/my-tool:1": {
+          "version": "latest"
+        }
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Renaming a Feature
+
+When you need to rename a published Feature, use the `legacyIds` property to maintain backwards compatibility. Supporting tools will dual-publish under both the old and new identifiers.
+
+<Steps>
+  <Step title="Update the source folder and id">
+    Rename the source code folder to the new `id` and update the `id` field in `devcontainer-feature.json`. Optionally update `name`, `documentationURL`, and other metadata.
+  </Step>
+  <Step title="Add legacyIds">
+    Add the old `id` to the `legacyIds` array so supporting tools know to also publish under the old name:
+
+    ```json
+    {
+      "id": "docker-outside-of-docker",
+      "version": "2.0.2",
+      "name": "Docker (Docker-outside-of-Docker)",
+      "documentationURL": "https://github.com/devcontainers/features/tree/main/src/docker-outside-of-docker",
+      "legacyIds": [
+        "docker-from-docker"
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Bump the version and republish">
+    Increment the semantic version — do not restart at `1.0.0`. Run `devcontainer features publish` or equivalent to release.
+  </Step>
+</Steps>
+
+<Note>
+  Supporting tools also use `legacyIds` to resolve `installsAfter` references that still use the old Feature ID, preserving installation ordering for other Feature authors who haven't updated their metadata yet.
+</Note>
+
+## Deprecating a Feature
+
+Set `"deprecated": true` in `devcontainer-feature.json` to signal that the Feature will receive no further updates:
+
+```json
+{
+  "id": "old-tool",
+  "version": "3.1.0",
+  "name": "Old Tool",
+  "deprecated": true
+}
+```
+
+- Existing OCI artifacts remain accessible, so current `devcontainer.json` configurations continue to work.
+- Supporting tools (VS Code, GitHub Codespaces, containers.dev) will hide deprecated Features from discovery listings and may surface a warning to users.
+- You can still publish critical security fixes by bumping the version on a deprecated Feature.

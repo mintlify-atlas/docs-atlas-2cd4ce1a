@@ -1,0 +1,257 @@
+---
+title: "Templates distribution"
+description: "Publish Dev Container Templates to an OCI registry so any supporting tool can discover and apply them."
+---
+
+This page describes how to structure, package, version, and publish a collection of Dev Container Templates. Distribution follows the same model as [Features distribution](/ecosystem/features-distribution), using OCI registries as the primary transport mechanism.
+
+<Note>
+  Check out the [template-starter repository](https://github.com/devcontainers/template-starter) to get started quickly with a pre-configured publishing workflow.
+</Note>
+
+## Source code structure
+
+A Templates collection is stored in a single git repository. One repository can contain multiple Templates, each in its own sub-directory under `src/`. All Templates in the repository share the same namespace.
+
+<Warning>
+  Templates and Features must be placed in **separate** git repositories.
+</Warning>
+
+```text
+.
+├── README.md
+└── src/
+    ├── dotnet/
+    │   ├── devcontainer-template.json
+    │   └── .devcontainer/
+    │       └── devcontainer.json
+    ├── docker-from-docker/
+    │   ├── devcontainer-template.json
+    │   └── .devcontainer/
+    │       ├── devcontainer.json
+    │       └── Dockerfile
+    └── go-postgres/
+        ├── devcontainer-template.json
+        └── .devcontainer/
+            ├── devcontainer.json
+            ├── docker-compose.yml
+            └── Dockerfile
+```
+
+Each sub-directory name must match the `id` field in the corresponding `devcontainer-template.json`. Any extra files placed inside a Template's sub-directory are included during packaging. Files outside a Template's sub-directory are ignored.
+
+## Versioning
+
+Each Template is independently versioned using [semver](https://semver.org/). The `version` field in `devcontainer-template.json` determines whether a Template is republished.
+
+<AccordionGroup>
+  <Accordion title="Republishing rules">
+    - If the exact `major.minor.patch` version already exists in the registry, the Template is **not** republished.
+    - Major and minor version tags (e.g. `1` and `1.2`) are always updated to point to the latest matching release.
+  </Accordion>
+  <Accordion title="When to bump the version">
+    Follow standard semver conventions: increment the patch version for bug fixes, minor for backward-compatible additions, and major for breaking changes.
+  </Accordion>
+</AccordionGroup>
+
+## Packaging
+
+Templates are distributed as tarballs. The tarball contains the full contents of the Template sub-directory, including `devcontainer-template.json`, `.devcontainer/devcontainer.json`, and any other included files.
+
+Tarballs are named `devcontainer-template-<id>.tgz`, where `<id>` is the Template's `id` field.
+
+A reference implementation for packaging and publishing is available as a GitHub Action:
+
+- [devcontainers/action](https://github.com/devcontainers/action) — GitHub Action for packaging and pushing Templates
+- [Dev Container Publish Action](https://github.com/marketplace/actions/dev-container-publish) — Marketplace action wrapper
+
+### devcontainer-collection.json
+
+When a collection is published, tooling auto-generates a `devcontainer-collection.json` index file and pushes it to the registry alongside the individual Templates.
+
+<ParamField path="sourceInformation" type="object">
+  Metadata from the packaging tool that produced the collection.
+</ParamField>
+
+<ParamField path="templates" type="object[]">
+  Array of Template metadata objects. Each entry is the full contents of one Template's `devcontainer-template.json`, merged into the top-level array.
+</ParamField>
+
+## Distribution via OCI registry
+
+An OCI registry that implements the [OCI Artifact Distribution Specification](https://github.com/opencontainers/distribution-spec) is the primary distribution mechanism. Supporting tools such as the [Dev Container CLI](https://github.com/devcontainers/cli) handle pushing and pulling automatically.
+
+### Naming convention
+
+Each packaged Template is pushed following this convention:
+
+```text
+<registry>/<namespace>/<id>:<version>
+```
+
+The `namespace` is a unique identifier for the collection — typically `<owner>/<repo>` of the source repository. The `namespace` for a Templates collection must differ from the namespace used by any Features collection.
+
+Version tags pushed for each release: `major`, `major.minor`, `major.minor.patch`, and `latest`.
+
+### Pushing a Template
+
+The example below uses [`oras`](https://oras.land/) to illustrate how a Tool pushes a Template tarball with the required media types. Supporting tools implement this directly rather than shelling out to `oras`.
+
+```bash
+REGISTRY=ghcr.io
+NAMESPACE=devcontainers/templates
+TEMPLATE=go
+ARTIFACT_PATH=devcontainer-template-go.tgz
+
+for VERSION in 1 1.2 1.2.3 latest
+do
+  oras push ${REGISTRY}/${NAMESPACE}/${TEMPLATE}:${VERSION} \
+    --config /dev/null:application/vnd.devcontainers \
+    ./${ARTIFACT_PATH}:application/vnd.devcontainers.layer.v1+tar
+done
+```
+
+Custom media types used:
+
+| Media type | Purpose |
+| --- | --- |
+| `application/vnd.devcontainers` | OCI config descriptor for a Template artifact |
+| `application/vnd.devcontainers.layer.v1+tar` | Template tarball layer |
+
+### Pushing the collection index
+
+The `devcontainer-collection.json` index is pushed to the same registry under the bare namespace, always tagged `latest`:
+
+```bash
+REGISTRY=ghcr.io
+NAMESPACE=devcontainers/templates
+
+oras push ${REGISTRY}/${NAMESPACE}:latest \
+  --config /dev/null:application/vnd.devcontainers \
+  ./devcontainer-collection.json:application/vnd.devcontainers.collection.layer.v1+json
+```
+
+| Media type | Purpose |
+| --- | --- |
+| `application/vnd.devcontainers.collection.layer.v1+json` | Collection index JSON layer |
+
+## How supporting tools apply Templates
+
+When a user selects a Template, a supporting tool:
+
+<Steps>
+  <Step title="Fetch the Template">
+    The tool resolves the OCI registry reference (`<registry>/<namespace>/<id>[:<version>]`) and downloads the tarball.
+  </Step>
+  <Step title="Read options">
+    The tool parses the `options` map from `devcontainer-template.json` and prompts the user for each option's value.
+  </Step>
+  <Step title="Resolve option values">
+    Selected values are collected into a key-value map. Default values are used for any option the user did not explicitly set.
+  </Step>
+  <Step title="Substitute placeholders">
+    The tool runs a string replacement over all files in the Template sub-directory, replacing every `${templateOption:optionId}` placeholder with the resolved value.
+  </Step>
+  <Step title="Write files to the project">
+    The modified `.devcontainer/devcontainer.json` and any other Template files are written into the project folder.
+  </Step>
+  <Step title="Handle optional paths">
+    For each entry in `optionalPaths`, the tool prompts the user on whether to include the file or directory, then includes or omits it accordingly.
+  </Step>
+</Steps>
+
+## Option resolution
+
+The following example walks through the full option resolution process for a `java` Template.
+
+### Template structure
+
+```text
+java/
+├── devcontainer-template.json
+└── .devcontainer/
+    └── devcontainer.json
+```
+
+### Options declared in devcontainer-template.json
+
+```json devcontainer-template.json
+{
+  "options": {
+    "imageVariant": {
+      "type": "string",
+      "description": "Specify version of Java.",
+      "proposals": [
+        "17-bullseye",
+        "17-buster",
+        "11-bullseye",
+        "11-buster",
+        "17",
+        "11"
+      ],
+      "default": "17-bullseye"
+    },
+    "nodeVersion": {
+      "type": "string",
+      "description": "Specify version of Node.js, or 'none' to skip Node.js installation.",
+      "proposals": [
+        "latest",
+        "16",
+        "14",
+        "10",
+        "none"
+      ],
+      "default": "latest"
+    },
+    "installMaven": {
+      "type": "boolean",
+      "description": "Install Maven, a management tool for Java.",
+      "default": "false"
+    }
+  }
+}
+```
+
+### Template devcontainer.json with placeholders
+
+```json .devcontainer/devcontainer.json (before substitution)
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:0-${templateOption:imageVariant}",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "${templateOption:nodeVersion}",
+      "installMaven": "${templateOption:installMaven}"
+    }
+  }
+}
+```
+
+### Resolved values
+
+The user selects `17-bullseye` for `imageVariant` and accepts defaults for the remaining options:
+
+```json
+{
+  "imageVariant": "17-bullseye",
+  "nodeVersion": "latest",
+  "installMaven": "false"
+}
+```
+
+### Final devcontainer.json after substitution
+
+```json .devcontainer/devcontainer.json (after substitution)
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:0-17-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest",
+      "installMaven": "false"
+    }
+  }
+}
+```
+
+The resolved file is dropped into the project as the starting point for containerizing it.

@@ -1,0 +1,196 @@
+---
+title: "Variables reference"
+description: "Template variables available in devcontainer.json string values, including host environment variables, container paths, and the unique container identifier."
+---
+
+You can reference variables in certain string values in `devcontainer.json` using the format `${variableName}`. Variables are substituted when the container is created or when the value is applied.
+
+## Available variables
+
+<AccordionGroup>
+
+<Accordion title="${localEnv:VARIABLE_NAME}">
+
+The value of an environment variable on the **host machine**. Unset variables are left blank.
+
+You can specify a default value for when the variable is not set:
+
+```
+${localEnv:VARIABLE_NAME:default_value}
+```
+
+**Supported in:** all string properties
+
+<Warning>
+  Clients like VS Code may need to be restarted to pick up newly set host environment variables.
+</Warning>
+
+<Note>
+  For cloud services, the "host" is the cloud machine rather than your local machine.
+</Note>
+
+**Examples:**
+
+Set a variable containing the local home folder (works across Linux, macOS, and Windows):
+
+```json
+"remoteEnv": {
+  "LOCAL_USER_PATH": "${localEnv:HOME}${localEnv:USERPROFILE}"
+}
+```
+
+Pass a local API key into the container environment:
+
+```json
+"containerEnv": {
+  "MY_API_KEY": "${localEnv:MY_API_KEY}"
+}
+```
+
+On modern macOS, you can set a local variable with:
+
+```bash
+echo 'export VARIABLE_NAME=my-value' >> ~/.zshenv
+```
+
+</Accordion>
+
+<Accordion title="${containerEnv:VARIABLE_NAME}">
+
+The value of an existing environment variable **inside the container** once it is up and running. Only available after the container has started.
+
+You can specify a default value for when the variable is not set:
+
+```
+${containerEnv:VARIABLE_NAME:default_value}
+```
+
+**Supported in:** `remoteEnv`
+
+**Example:**
+
+Extend the container's `PATH` without overwriting it:
+
+```json
+"remoteEnv": {
+  "PATH": "${containerEnv:PATH}:/some/other/path"
+}
+```
+
+</Accordion>
+
+<Accordion title="${localWorkspaceFolder}">
+
+The path of the local folder that was opened in the supporting tool — the folder that contains `.devcontainer/devcontainer.json`.
+
+**Supported in:** all string properties
+
+**Example:**
+
+Mount a sub-folder from the local workspace:
+
+```json
+"workspaceMount": "source=${localWorkspaceFolder}/sub-folder,target=/workspace,type=bind,consistency=cached"
+```
+
+</Accordion>
+
+<Accordion title="${containerWorkspaceFolder}">
+
+The path where workspace files can be found **inside the container**.
+
+**Supported in:** all string properties
+
+**Example:**
+
+Run a script from the workspace root inside the container:
+
+```json
+"postCreateCommand": "bash ${containerWorkspaceFolder}/scripts/setup.sh"
+```
+
+</Accordion>
+
+<Accordion title="${localWorkspaceFolderBasename}">
+
+The name (not the full path) of the local folder that was opened in the supporting tool.
+
+**Supported in:** all string properties
+
+**Example:**
+
+Use the project name as a container label:
+
+```json
+"runArgs": ["--label", "project=${localWorkspaceFolderBasename}"]
+```
+
+</Accordion>
+
+<Accordion title="${containerWorkspaceFolderBasename}">
+
+The name (not the full path) of the folder where workspace files can be found inside the container.
+
+**Supported in:** all string properties
+
+**Example:**
+
+Set an environment variable to the workspace folder name:
+
+```json
+"remoteEnv": {
+  "PROJECT_NAME": "${containerWorkspaceFolderBasename}"
+}
+```
+
+</Accordion>
+
+<Accordion title="${devcontainerId}">
+
+An identifier that is unique to the dev container and stable across rebuilds. This is useful for naming resources (like volumes or network namespaces) that should persist across container rebuilds but remain isolated between different dev containers.
+
+**Supported in:** `name`, `runArgs`, `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand`, `workspaceFolder`, `workspaceMount`, `mounts`, `containerEnv`, `remoteEnv`, `containerUser`, `remoteUser`, `customizations`
+
+**Example:**
+
+Create a named volume that persists across rebuilds for this specific container:
+
+```json
+"mounts": [
+  {
+    "source": "devcontainer-${devcontainerId}-bashhistory",
+    "target": "/commandhistory",
+    "type": "volume"
+  }
+]
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+## Property support summary
+
+| Variable | General props | `remoteEnv` | `containerEnv` | Lifecycle scripts | `mounts` | `runArgs` |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `${localEnv:...}` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `${containerEnv:...}` | | ✓ | | | | |
+| `${localWorkspaceFolder}` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `${containerWorkspaceFolder}` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `${localWorkspaceFolderBasename}` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `${containerWorkspaceFolderBasename}` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `${devcontainerId}` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+<Note>
+  `${containerEnv:...}` is only available in `remoteEnv` because it requires the container to already be running. All other variables are resolved before the container starts.
+</Note>
+
+## Variable substitution timing
+
+Variables are substituted when the value is applied, not when the `devcontainer.json` is parsed:
+
+- `${localEnv:...}` — resolved from the host at container creation time
+- `${containerEnv:...}` — resolved from the running container when `remoteEnv` is applied
+- Path variables — resolved at container creation time from the active workspace
+
+When using [image metadata](/spec/image-metadata), variables stored in image labels are also substituted at container creation time, not at image build time.

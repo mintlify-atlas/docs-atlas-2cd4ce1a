@@ -1,0 +1,136 @@
+---
+title: "The devcontainerId variable"
+description: "Use ${devcontainerId} to reference a stable, unique identifier for a dev container — useful for scoping named volumes and other resources to a specific container."
+---
+
+The `${devcontainerId}` variable gives you a stable, unique identifier for a dev container that persists across rebuilds. You can use it in `devcontainer.json` properties and in Feature metadata wherever you need to tie a resource — such as a named Docker volume — to a specific container instance.
+
+## What it solves
+
+Without a stable identifier, Features and configurations have no reliable way to name resources that belong to a single dev container. For example, the `docker-in-docker` Feature needs to mount a volume at `/var/lib/docker`. If multiple dev containers share the same Docker host, they must each get their own volume — but there is no static name that distinguishes one container from another across rebuilds.
+
+`${devcontainerId}` solves this by providing a value that is:
+
+- **Unique** among all dev containers on the same Docker host.
+- **Stable** across rebuilds of the same dev container.
+- **Alphanumeric only** — safe to embed in volume names, labels, and other identifiers.
+
+## Where you can use it
+
+`${devcontainerId}` is a substitution variable, not a build-time value. It must only appear in properties that are evaluated at container runtime, **not** in image build configuration. Using it in build-time properties would prevent image pre-building because the ID is not known until the container is created.
+
+### Supported properties in `devcontainer.json`
+
+`name`, `runArgs`, `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand`, `workspaceFolder`, `workspaceMount`, `mounts`, `containerEnv`, `remoteEnv`, `containerUser`, `remoteUser`, `customizations`
+
+### Supported properties in Feature metadata (`devcontainer-feature.json`)
+
+`entrypoint`, `mounts`, `customizations`
+
+<Warning>
+Do not use `${devcontainerId}` in Dockerfile build arguments or image build options. The identifier is unknown at image build time and cannot be resolved.
+</Warning>
+
+## Usage example
+
+The [`ghcr.io/devcontainers/features/docker-in-docker`](https://github.com/devcontainers/features/blob/main/src/docker-in-docker/devcontainer-feature.json) Feature uses `${devcontainerId}` to scope its Docker-in-Docker data volume to the specific container it is installed into:
+
+```jsonc devcontainer-feature.json
+{
+  "id": "docker-in-docker",
+  "version": "1.0.4",
+  "mounts": [
+    {
+      "source": "dind-var-lib-docker-${devcontainerId}",
+      "target": "/var/lib/docker",
+      "type": "volume"
+    }
+  ]
+}
+```
+
+Each dev container gets its own `dind-var-lib-docker-<id>` volume. Rebuilding the container reuses the same volume because the ID remains stable.
+
+You can use the variable in `devcontainer.json` in the same way:
+
+```json .devcontainer/devcontainer.json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "mounts": [
+    {
+      "source": "myproject-cache-${devcontainerId}",
+      "target": "/home/vscode/.cache",
+      "type": "volume"
+    }
+  ]
+}
+```
+
+## Label-based implementation
+
+Implementations may choose their own strategy for computing the identifier, but must guarantee uniqueness and stability. A recommended label-based approach is described below.
+
+### Concept
+
+A dev container is identified on its Docker host by a set of labels attached to the container. For a locally-opened folder, this might be a single label:
+
+```
+devcontainer.local_folder = /home/user/myproject
+```
+
+The identifier is derived by hashing this label set in a deterministic way.
+
+### Computation algorithm
+
+<Steps>
+  <Step title="Serialize the labels">
+    Represent the identifying labels as a JSON object. Sort the object keys alphabetically and remove any optional whitespace outside of keys and values. This ensures all implementations produce the same string for the same label set.
+
+    ```json
+    {"devcontainer.local_folder":"/home/user/myproject"}
+    ```
+  </Step>
+
+  <Step title="Compute a SHA-256 hash">
+    Hash the UTF-8 encoded JSON string using SHA-256.
+  </Step>
+
+  <Step title="Encode the result">
+    Convert the hash to a base-32 representation. Left-pad with `'0'` characters to a total length of 52 characters.
+  </Step>
+</Steps>
+
+The result is a 52-character alphanumeric string that is safe to use in Docker resource names.
+
+### JavaScript reference implementation
+
+```javascript
+const crypto = require('crypto');
+
+function uniqueIdForLabels(idLabels) {
+  // Sort properties to ensure deterministic serialization
+  const stringInput = JSON.stringify(idLabels, Object.keys(idLabels).sort());
+  const bufferInput = Buffer.from(stringInput, 'utf-8');
+
+  const hash = crypto.createHash('sha256')
+    .update(bufferInput)
+    .digest();
+
+  const uniqueId = BigInt(`0x${hash.toString('hex')}`)
+    .toString(32)
+    .padStart(52, '0');
+
+  return uniqueId;
+}
+```
+
+**Input:** an object whose keys are label names and whose values are label values.  
+**Output:** a 52-character base-32 string.
+
+<Info>
+Implementations are free to use a different approach as long as the result is unique per dev container on the Docker host, stable across rebuilds, and contains only alphanumeric characters.
+</Info>
+
+## Related variables
+
+`${devcontainerId}` is one of several pre-defined variables available in `devcontainer.json`. See the [variables reference](/spec/variables) for the full list, including `${localEnv:VARIABLE_NAME}`, `${containerEnv:VARIABLE_NAME}`, and workspace folder variables.

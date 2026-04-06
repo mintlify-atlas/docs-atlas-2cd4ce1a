@@ -1,0 +1,160 @@
+---
+title: "GPU host requirement"
+description: "Declare GPU requirements in devcontainer.json so cloud services and local tools can provision or validate the right hardware for your container."
+---
+
+The `hostRequirements.gpu` property extends the existing host requirements system to express whether a GPU is needed, optional, or must meet specific core and memory thresholds.
+
+## Overview
+
+`devcontainer.json` supports a `hostRequirements` object that lets you describe the minimum hardware a container needs to run properly. Cloud services use these hints to select an appropriate machine type automatically; local tools may warn the user if requirements are not satisfied.
+
+The full set of host requirement properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `hostRequirements.cpus` | integer | Minimum number of CPUs / virtual CPUs / cores. |
+| `hostRequirements.memory` | string | Minimum RAM with a `tb`, `gb`, `mb`, or `kb` suffix. |
+| `hostRequirements.storage` | string | Minimum disk space with a `tb`, `gb`, `mb`, or `kb` suffix. |
+| `hostRequirements.gpu` | boolean \| `"optional"` \| object | GPU requirement — see below. |
+
+## The `gpu` property
+
+The `gpu` property accepts three forms: a boolean, the string `"optional"`, or an object with fine-grained constraints.
+
+### Boolean values
+
+Set `gpu` to `true` to require a GPU, or `false` (the default) to indicate that no GPU is needed.
+
+```json .devcontainer/devcontainer.json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "hostRequirements": {
+    "gpu": true
+  }
+}
+```
+
+### Optional GPU
+
+Use `"optional"` to indicate that a GPU will be used if one is available, but is not strictly required.
+
+```json .devcontainer/devcontainer.json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "hostRequirements": {
+    "gpu": "optional"
+  }
+}
+```
+
+<Info>
+Cloud services that see `"optional"` may provision a GPU-enabled machine when capacity allows, or fall back gracefully to a CPU-only machine.
+</Info>
+
+### Object with constraints
+
+Use an object to specify minimum GPU resource requirements.
+
+<ParamField body="cores" type="integer">
+  Minimum number of GPU cores required. For example, `2`.
+</ParamField>
+
+<ParamField body="memory" type="string">
+  Minimum GPU memory with a `tb`, `gb`, `mb`, or `kb` suffix. For example, `"8gb"`.
+</ParamField>
+
+```json .devcontainer/devcontainer.json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "hostRequirements": {
+    "gpu": {
+      "cores": 2,
+      "memory": "8gb"
+    }
+  }
+}
+```
+
+## Example configurations
+
+<AccordionGroup>
+  <Accordion title="Machine learning workload requiring a GPU">
+    ```json .devcontainer/devcontainer.json
+    {
+      "image": "mcr.microsoft.com/devcontainers/python:3.11",
+      "hostRequirements": {
+        "cpus": 4,
+        "memory": "16gb",
+        "storage": "64gb",
+        "gpu": {
+          "cores": 4,
+          "memory": "16gb"
+        }
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="GPU optional — accelerated when available">
+    ```json .devcontainer/devcontainer.json
+    {
+      "image": "mcr.microsoft.com/devcontainers/python:3.11",
+      "hostRequirements": {
+        "cpus": 2,
+        "memory": "8gb",
+        "gpu": "optional"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="GPU required, no specific constraints">
+    ```json .devcontainer/devcontainer.json
+    {
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+      "hostRequirements": {
+        "gpu": true
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## How tools use this property
+
+**Cloud services** (such as GitHub Codespaces) read `hostRequirements.gpu` to select an appropriate compute SKU when creating the environment. If a GPU is required, the service will provision a GPU-enabled machine. With `"optional"`, the service may choose a GPU machine when available at no extra cost, otherwise falling back to CPU-only.
+
+**Local tools** use the property for validation. If the local Docker host does not have a GPU and `gpu` is set to `true`, the tool may display a warning before proceeding.
+
+<Warning>
+Host requirements are **hints** to the implementing tool. Enforcement behavior varies by implementation. A tool is not required to block container creation if requirements are unmet — it may only warn.
+</Warning>
+
+## Schema reference
+
+```json schema excerpt
+"hostRequirements": {
+  "type": "object",
+  "properties": {
+    "cpus": { "type": "integer", "minimum": 1 },
+    "memory": { "type": "string", "pattern": "^\\d+([tgmk]b)?$" },
+    "storage": { "type": "string", "pattern": "^\\d+([tgmk]b)?$" },
+    "gpu": {
+      "oneOf": [
+        {
+          "type": ["boolean", "string"],
+          "enum": [true, false, "optional"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cores": { "type": "integer", "minimum": 1 },
+            "memory": { "type": "string", "pattern": "^\\d+([tgmk]b)?$" }
+          }
+        }
+      ]
+    }
+  }
+}
+```

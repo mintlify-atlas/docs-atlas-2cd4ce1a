@@ -1,0 +1,436 @@
+---
+title: "Features reference"
+description: "Complete reference for the devcontainer-feature.json metadata file, including all properties, options, lifecycle hooks, and option resolution."
+---
+
+A Feature is a self-contained entity in a folder with at minimum a `devcontainer-feature.json` metadata file and an `install.sh` entrypoint script. Additional files are permitted and are packaged alongside the required files.
+
+## Folder structure
+
+```
+feature/
+├── devcontainer-feature.json
+├── install.sh
+└── (other files)
+```
+
+Each sub-directory name must match the `id` field of the `devcontainer-feature.json`. Files outside the Feature's sub-directory are not included when packaging.
+
+## devcontainer-feature.json properties
+
+The `devcontainer-feature.json` file defines metadata about a Feature. All properties are optional except `id`, `version`, and `name`.
+
+### Required properties
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the Feature within the context of the repository where the Feature exists. Must match the name of the directory where `devcontainer-feature.json` resides. Should be provided in lowercase.
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  The semantic version of the Feature (e.g. `1.0.0`). Follows the [semver specification](https://semver.org/).
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  A human-friendly display name for the Feature.
+</ParamField>
+
+### Metadata properties
+
+<ParamField path="description" type="string">
+  Description of the Feature. For the best appearance in supporting tools, avoid Markdown or HTML in the description.
+</ParamField>
+
+<ParamField path="documentationURL" type="string">
+  URL to the documentation for the Feature.
+</ParamField>
+
+<ParamField path="licenseURL" type="string">
+  URL to the license for the Feature.
+</ParamField>
+
+<ParamField path="keywords" type="string[]">
+  List of strings relevant to a user searching for this Feature.
+</ParamField>
+
+<ParamField path="deprecated" type="boolean" default="false">
+  Indicates that the Feature is deprecated and will not receive further updates or support. Supporting tools use this property to highlight Feature deprecation. The OCI artifacts continue to exist, so existing dev configurations continue to work.
+</ParamField>
+
+<ParamField path="legacyIds" type="string[]">
+  Array of old IDs previously used to publish this Feature. Use this when renaming a Feature within a single namespace to preserve backwards compatibility. See [renaming a Feature](#renaming-a-feature).
+</ParamField>
+
+### Container configuration properties
+
+<ParamField path="containerEnv" type="object">
+  A set of name/value pairs that set or override environment variables in the container. These are emitted as `ENV` instructions in the Dockerfile before the Feature's `install.sh` is executed.
+
+  ```json
+  {
+    "containerEnv": {
+      "MY_VAR": "value",
+      "PATH": "${PATH}:/usr/local/myFeature/bin"
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField path="privileged" type="boolean">
+  Enables [privileged mode](https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities) (`--privileged`) for the container when this Feature is used. Required by Features like Docker-in-Docker. If any Feature requires it, the flag is applied.
+</ParamField>
+
+<ParamField path="init" type="boolean">
+  Adds the [tini init process](https://github.com/krallin/tini) (`--init`) to the container when this Feature is used. If any Feature requires it, the flag is applied.
+</ParamField>
+
+<ParamField path="capAdd" type="string[]">
+  Docker [capabilities](https://docs.docker.com/engine/security/#linux-kernel-capabilities) to add to the container. Values from all Features are concatenated.
+
+  ```json
+  {
+    "capAdd": ["SYS_PTRACE"]
+  }
+  ```
+</ParamField>
+
+<ParamField path="securityOpt" type="string[]">
+  Container [security options](https://docs.docker.com/engine/security/seccomp/) to apply when creating the container (e.g. updating the seccomp profile). Values from all Features are concatenated.
+
+  ```json
+  {
+    "securityOpt": ["seccomp=unconfined"]
+  }
+  ```
+</ParamField>
+
+<ParamField path="entrypoint" type="string">
+  Path to a script that should run at container startup. Set this if the Feature requires an entrypoint that fires when the container starts.
+</ParamField>
+
+<ParamField path="mounts" type="object[]">
+  Cross-orchestrator way to add additional mounts to the container. Each element accepts the same values as the [Docker CLI `--mount` flag](https://docs.docker.com/engine/reference/commandline/run/#mount). The pre-defined `${devcontainerId}` variable may be referenced in values.
+
+  ```json
+  {
+    "mounts": [
+      {
+        "source": "dind-var-lib-docker-${devcontainerId}",
+        "target": "/var/lib/docker",
+        "type": "volume"
+      }
+    ]
+  }
+  ```
+</ParamField>
+
+<ParamField path="customizations" type="object">
+  Tool-specific configuration. Each tool uses a unique namespace under `customizations`. For each namespace, object values are replaced and array values are unioned across all contributing Features.
+
+  ```json
+  {
+    "customizations": {
+      "vscode": {
+        "extensions": ["golang.Go"],
+        "settings": {
+          "go.toolsManagement.autoUpdate": true
+        }
+      }
+    }
+  }
+  ```
+</ParamField>
+
+### Dependency properties
+
+<ParamField path="dependsOn" type="object">
+  An object of Feature dependencies that **must** be installed before this Feature. Elements follow the same semantics as the `features` object in `devcontainer.json`, including options. Evaluated recursively.
+
+  The ID must refer to a Feature published to an OCI registry, a Feature tgz URI, or a Feature in the local file tree. Deprecated identifiers (GitHub Release) are not supported.
+
+  ```json
+  {
+    "dependsOn": {
+      "ghcr.io/devcontainers/features/node:1": {},
+      "ghcr.io/devcontainers/features/python:1.2.3": {
+        "version": "3.11"
+      },
+      "ghcr.io/devcontainers/features/go@sha256:a4cdc44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": {}
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField path="installsAfter" type="string[]">
+  Array of Feature IDs (without version tags) that should be installed before this Feature, **if they are already queued to be installed**. This is a soft dependency — it only influences order, not whether a Feature is installed. Not evaluated recursively. Features referenced here cannot provide options or version pins.
+
+  ```json
+  {
+    "installsAfter": [
+      "ghcr.io/devcontainers/features/node",
+      "ghcr.io/devcontainers/features/python"
+    ]
+  }
+  ```
+</ParamField>
+
+## The options property
+
+The `options` property defines user-configurable parameters for the Feature. Each option ID becomes an environment variable name (uppercased) available to `install.sh` at build time.
+
+```json
+{
+  "options": {
+    "version": {
+      "type": "string",
+      "enum": ["latest", "3.11", "3.10", "3.9"],
+      "default": "latest",
+      "description": "Select a Python version to install."
+    },
+    "pip": {
+      "type": "boolean",
+      "default": true,
+      "description": "Install pip."
+    },
+    "optimize": {
+      "type": "boolean",
+      "default": true,
+      "description": "Optimize the Python installation."
+    }
+  }
+}
+```
+
+### Option properties
+
+<ParamField path="options.<optionId>.type" type="string" required>
+  Type of the option. Valid values: `"boolean"`, `"string"`.
+</ParamField>
+
+<ParamField path="options.<optionId>.default" type="string | boolean">
+  Default value used when the user omits this option from their configuration.
+</ParamField>
+
+<ParamField path="options.<optionId>.description" type="string">
+  Description displayed to the user by supporting tools.
+</ParamField>
+
+<ParamField path="options.<optionId>.proposals" type="string[]">
+  A list of suggested string values. Free-form values **are** allowed. Omit when using `enum`.
+</ParamField>
+
+<ParamField path="options.<optionId>.enum" type="string[]">
+  A strict list of allowed string values. Free-form values are **not** allowed. Omit when using `proposals`.
+</ParamField>
+
+## Option resolution
+
+Options specified in `devcontainer.json` are passed to `install.sh` as environment variables sourced from a file named `devcontainer-features.env`.
+
+The option ID is sanitized using the following logic before becoming an environment variable name:
+
+```javascript
+(str) => str
+  .replace(/[^\w_]/g, '_')
+  .replace(/^[\d_]+/g, '_')
+  .toUpperCase();
+```
+
+Any options defined in `devcontainer-feature.json` that are omitted by the user are implicitly exported with their default value.
+
+### Option resolution example
+
+Given a `python` Feature with the following options:
+
+```jsonc
+// devcontainer-feature.json
+{
+  "options": {
+    "version": {
+      "type": "string",
+      "enum": ["latest", "3.11", "3.10", "3.9", "3.8"],
+      "default": "latest",
+      "description": "Select a Python version to install."
+    },
+    "pip": {
+      "type": "boolean",
+      "default": true,
+      "description": "Installs pip"
+    },
+    "optimize": {
+      "type": "boolean",
+      "default": true,
+      "description": "Optimize python installation"
+    }
+  }
+}
+```
+
+And the user's `devcontainer.json`:
+
+```jsonc
+{
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11",
+      "pip": false
+    }
+  }
+}
+```
+
+The emitted environment variables (sourced by `install.sh`) are:
+
+```env
+VERSION="3.11"
+PIP="false"
+OPTIMIZE="true"
+```
+
+The following `install.sh` script:
+
+```bash
+#!/usr/bin/env bash
+
+echo "Version is $VERSION"
+echo "Pip? $PIP"
+echo "Optimize? $OPTIMIZE"
+```
+
+Produces:
+
+```
+Version is 3.11
+Pip? false
+Optimize? true
+```
+
+## Lifecycle hooks
+
+Features can contribute commands to each of the following lifecycle hooks. The property names and behavior mirror the matching properties in `devcontainer.json`.
+
+<ParamField path="onCreateCommand" type="string | string[] | object">
+  Runs when the container is created, after `initializeCommand` and before `updateContentCommand`.
+</ParamField>
+
+<ParamField path="updateContentCommand" type="string | string[] | object">
+  Runs when creating the container, and reruns when workspace content is updated while creating the container. Runs after `onCreateCommand` and before `postCreateCommand`.
+</ParamField>
+
+<ParamField path="postCreateCommand" type="string | string[] | object">
+  Runs after the container is created. Runs after `updateContentCommand` and before `postStartCommand`.
+</ParamField>
+
+<ParamField path="postStartCommand" type="string | string[] | object">
+  Runs after the container starts. Runs after `postCreateCommand` and before `postAttachCommand`.
+</ParamField>
+
+<ParamField path="postAttachCommand" type="string | string[] | object">
+  Runs when attaching to the container, after `postStartCommand`.
+</ParamField>
+
+Each command type accepts:
+- A **string** — run in a shell.
+- An **array of strings** — run as a single command without a shell.
+- An **object** — each key/value pair runs in parallel within that hook.
+
+### Lifecycle hook behavior
+
+For each lifecycle hook, commands contributed by Features are executed in sequence (in Feature installation order), always **before** any user-provided lifecycle commands in `devcontainer.json`.
+
+If a Feature provides a command using the object syntax, all commands in that group execute in parallel but still block commands from subsequent Features and the `devcontainer.json`.
+
+If any lifecycle script exits with a non-zero code, subsequent scripts in the same hook and all following hooks are skipped.
+
+```jsonc
+// devcontainer-feature.json example with lifecycle hooks
+{
+  "id": "myFeature",
+  "version": "1.0.0",
+  "onCreateCommand": "setup.sh && configure.sh",
+  "postCreateCommand": "/usr/local/share/post-create.sh",
+  "postAttachCommand": {
+    "server": "start-server.sh",
+    "indexer": "start-indexer.sh"
+  }
+}
+```
+
+<Note>
+  To use a script bundled with the Feature in a lifecycle hook, your `install.sh` must copy it to a persistent location outside of `/tmp`. Implementations are not required to persist Feature install scripts beyond the initial build.
+</Note>
+
+## Renaming a Feature
+
+Use `legacyIds` to rename a published Feature while preserving backwards compatibility. Tools that implement the distribution specification will dual-publish the Feature under both the old and new IDs.
+
+<Steps>
+  <Step title="Update the source directory and id">
+    Rename the Feature's source folder and update the `id` field in `devcontainer-feature.json` to the new name. Optionally update `name`, `documentationURL`, and other metadata.
+  </Step>
+  <Step title="Add legacyIds">
+    Add or update the `legacyIds` property to include the previously used `id`.
+  </Step>
+  <Step title="Bump the version">
+    Increment the semantic version. Do **not** restart at `1.0.0` — continue the existing version sequence.
+  </Step>
+  <Step title="Republish">
+    Run `devcontainer features publish` or the equivalent publishing tool.
+  </Step>
+</Steps>
+
+#### Example
+
+Renaming `docker-from-docker` to `docker-outside-of-docker`:
+
+```jsonc
+// Before
+{
+  "id": "docker-from-docker",
+  "version": "2.0.1",
+  "name": "Docker (Docker-from-Docker)",
+  "documentationURL": "https://github.com/devcontainers/features/tree/main/src/docker-from-docker"
+}
+```
+
+```jsonc
+// After
+{
+  "id": "docker-outside-of-docker",
+  "version": "2.0.2",
+  "name": "Docker (Docker-outside-of-Docker)",
+  "documentationURL": "https://github.com/devcontainers/features/tree/main/src/docker-outside-of-docker",
+  "legacyIds": [
+    "docker-from-docker"
+  ]
+}
+```
+
+The `installsAfter` property in other Features that reference the old ID continues to work correctly — implementing tools resolve both the current and legacy IDs.
+
+## The devcontainerId variable
+
+The `${devcontainerId}` variable can be used in the `entrypoint`, `mounts`, and `customizations` properties of `devcontainer-feature.json`. It is replaced with a unique, stable identifier for the dev container at runtime.
+
+<Warning>
+  Do not use `${devcontainerId}` in properties that affect image building (such as `containerEnv`). The container ID is not known at image build time, which would prevent pre-building the image.
+</Warning>
+
+```json
+{
+  "mounts": [
+    {
+      "source": "dind-var-lib-docker-${devcontainerId}",
+      "target": "/var/lib/docker",
+      "type": "volume"
+    }
+  ]
+}
+```
+
+## Implementation notes
+
+- `privileged` and `init` are applied if any single Feature requires them.
+- `capAdd` and `securityOpt` values are concatenated across all Features.
+- `containerEnv` is added as `ENV` instructions in the Dockerfile before the Feature executes.
+- Each Feature script executes as its own layer to aid in caching and rebuilding.
+- Feature scripts are executed as `root`. To perform user-level modifications, use `su ${_REMOTE_USER} -c "command"`.

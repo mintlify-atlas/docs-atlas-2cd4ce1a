@@ -1,0 +1,290 @@
+---
+title: "Authoring Templates"
+description: "A practical guide to creating and publishing Dev Container Templates, including option substitution syntax and OCI registry distribution."
+---
+
+Dev Container Templates are source files packaged together that encode a complete development environment configuration. A supporting tool drops the Template's files into a user's project, substituting any configured options before writing them.
+
+## Folder structure
+
+A Template requires at minimum a `devcontainer-template.json` metadata file and a `.devcontainer/devcontainer.json`. Additional files (Dockerfiles, docker-compose files, scripts) are permitted and distributed alongside the required files.
+
+```
+template/
+├── devcontainer-template.json
+└── .devcontainer/
+    ├── devcontainer.json
+    └── (other files)
+```
+
+When hosting multiple Templates in a single repository, use a `src/` directory:
+
+```
+src/
+├── go/
+│   ├── devcontainer-template.json
+│   └── .devcontainer/
+│       └── devcontainer.json
+├── docker-from-docker/
+│   ├── devcontainer-template.json
+│   └── .devcontainer/
+│       ├── devcontainer.json
+│       └── Dockerfile
+└── go-postgres/
+    ├── devcontainer-template.json
+    └── .devcontainer/
+        ├── devcontainer.json
+        ├── docker-compose.yml
+        └── Dockerfile
+```
+
+<Note>
+  Templates and Features should be stored in separate git repositories.
+</Note>
+
+## Authoring workflow
+
+<Steps>
+  <Step title="Create the metadata file">
+    Create `devcontainer-template.json` in your Template folder. The `id` must match the folder name.
+
+    ```json
+    {
+      "id": "java",
+      "version": "1.0.0",
+      "name": "Java",
+      "description": "Develop Java applications.",
+      "documentationURL": "https://github.com/devcontainers/templates/tree/main/src/java",
+      "platforms": ["Java"],
+      "publisher": "Dev Container Spec Maintainers",
+      "keywords": ["java", "jdk"]
+    }
+    ```
+
+    | Property | Type | Description |
+    | :--- | :--- | :--- |
+    | `id` | string | Unique identifier matching the folder name |
+    | `version` | string | Semantic version |
+    | `name` | string | Display name |
+    | `description` | string | Short description |
+    | `documentationURL` | string | URL to documentation |
+    | `licenseURL` | string | URL to license |
+    | `options` | object | Configurable options (see below) |
+    | `platforms` | array | Languages/platforms supported |
+    | `publisher` | string | Maintainer name |
+    | `keywords` | array | Search keywords |
+    | `optionalPaths` | array | Files/directories the user may opt out of |
+  </Step>
+
+  <Step title="Declare options">
+    Options let users customize the Template when they apply it. Declare them in the `options` map — each key becomes a placeholder in your Template files using the `${templateOption:optionId}` syntax.
+
+    ```json
+    {
+      "options": {
+        "imageVariant": {
+          "type": "string",
+          "description": "Specify version of Java.",
+          "proposals": [
+            "17-bullseye",
+            "17-buster",
+            "11-bullseye",
+            "11-buster",
+            "17",
+            "11"
+          ],
+          "default": "17-bullseye"
+        },
+        "nodeVersion": {
+          "type": "string",
+          "proposals": ["latest", "16", "14", "10", "none"],
+          "default": "latest",
+          "description": "Specify version of node, or 'none' to skip node installation."
+        },
+        "installMaven": {
+          "type": "boolean",
+          "description": "Install Maven, a management tool for Java.",
+          "default": "false"
+        }
+      }
+    }
+    ```
+
+    | Property | Type | Description |
+    | :--- | :--- | :--- |
+    | `type` | string | `"string"` or `"boolean"` |
+    | `description` | string | Shown to users during Template selection |
+    | `proposals` | array | Suggested values; free-form input is allowed |
+    | `enum` | array | Strict list of allowed values; free-form input is not allowed |
+    | `default` | string | Default value when the user does not provide one |
+
+    Use `proposals` when you want to suggest common values but allow custom input. Use `enum` to enforce a strict set of valid values.
+  </Step>
+
+  <Step title="Use option substitution in devcontainer.json">
+    Reference options in any file within the `.devcontainer/` sub-directory using `${templateOption:optionId}`. Supporting tools replace each placeholder with the user's selected value before writing the files to the project.
+
+    ```json
+    {
+      "name": "Java",
+      "image": "mcr.microsoft.com/devcontainers/java:0-${templateOption:imageVariant}",
+      "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+          "version": "${templateOption:nodeVersion}",
+          "installMaven": "${templateOption:installMaven}"
+        }
+      }
+    }
+    ```
+
+    If a user selects `17-bullseye` for `imageVariant` and accepts defaults for the other options, the written `devcontainer.json` becomes:
+
+    ```json
+    {
+      "name": "Java",
+      "image": "mcr.microsoft.com/devcontainers/java:0-17-bullseye",
+      "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+          "version": "latest",
+          "installMaven": "false"
+        }
+      }
+    }
+    ```
+
+    Substitution applies to all files inside the Template's sub-directory — not just `devcontainer.json`. You can use `${templateOption:...}` in Dockerfiles, shell scripts, or any other file that ships with the Template.
+  </Step>
+
+  <Step title="Mark optional paths">
+    Use `optionalPaths` in `devcontainer-template.json` to identify files or directories that users can opt out of when applying the Template.
+
+    ```json
+    {
+      "id": "cpp",
+      "version": "3.0.0",
+      "name": "C++",
+      "description": "Develop C++ applications",
+      "optionalPaths": [
+        "GETTING-STARTED.md",
+        "example-project-1/MyProject.csproj",
+        ".github/*"
+      ]
+    }
+    ```
+
+    - For a single file, provide the full relative path from the Template root.
+    - For a directory and all its contents, append `/*` to the path (e.g. `.github/*`).
+
+    Supporting tools must inspect this property and prompt the user before including these files in the output.
+  </Step>
+
+  <Step title="Publish to an OCI registry">
+    Templates are distributed as tarballs pushed to an OCI registry. Use the [Dev Container CLI](https://github.com/devcontainers/cli) or the [Dev Container Publish GitHub Action](https://github.com/devcontainers/action).
+
+    Each Template is published following the naming convention `<registry>/<namespace>/<id>[:version]`:
+
+    ```bash
+    devcontainer templates publish \
+      --namespace myorg/my-templates \
+      --registry ghcr.io \
+      ./src
+    ```
+
+    The tool publishes major, minor, and patch version tags automatically (e.g. `1`, `1.2`, `1.2.3`, `latest`).
+
+    <Note>
+      The `namespace` must be different from the namespace used for your Features collection. Use a separate repository for Templates and Features.
+    </Note>
+
+    Users reference your Template via its OCI registry path:
+
+    - `ghcr.io/myorg/my-templates/java`
+    - `ghcr.io/myorg/my-templates/java:1`
+    - `ghcr.io/myorg/my-templates/java:latest`
+  </Step>
+
+  <Step title="Test a Template locally">
+    Reference a Template's source folder directly from the [Dev Container CLI](https://github.com/devcontainers/cli) to test before publishing:
+
+    ```bash
+    devcontainer templates apply \
+      --workspace-folder ./my-project \
+      --template-id ./src/java
+    ```
+
+    This applies the Template to `./my-project`, prompting for option values and performing substitution as a published tool would, without requiring an OCI push first.
+
+    <Tip>
+      Add a `test/` directory alongside `src/` with a `test.sh` script per Template to automate integration testing. Many CI pipelines use the Dev Container CLI to spin up the environment and assert that expected tools are present.
+    </Tip>
+  </Step>
+</Steps>
+
+## Complete example
+
+The following is the full Java Template example showing all three parts working together.
+
+<CodeGroup>
+
+```json devcontainer-template.json
+{
+  "id": "java",
+  "version": "1.0.0",
+  "name": "Java",
+  "description": "Develop Java applications.",
+  "options": {
+    "imageVariant": {
+      "type": "string",
+      "description": "Specify version of java.",
+      "proposals": [
+        "17-bullseye",
+        "17-buster",
+        "11-bullseye",
+        "11-buster",
+        "17",
+        "11"
+      ],
+      "default": "17-bullseye"
+    },
+    "nodeVersion": {
+      "type": "string",
+      "proposals": ["latest", "16", "14", "10", "none"],
+      "default": "latest",
+      "description": "Specify version of node, or 'none' to skip node installation."
+    },
+    "installMaven": {
+      "type": "boolean",
+      "description": "Install Maven, a management tool for Java.",
+      "default": "false"
+    }
+  }
+}
+```
+
+```json .devcontainer/devcontainer.json (template)
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:0-${templateOption:imageVariant}",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "${templateOption:nodeVersion}",
+      "installMaven": "${templateOption:installMaven}"
+    }
+  }
+}
+```
+
+```json .devcontainer/devcontainer.json (after applying with defaults)
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:0-17-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest",
+      "installMaven": "false"
+    }
+  }
+}
+```
+
+</CodeGroup>

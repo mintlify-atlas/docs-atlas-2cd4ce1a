@@ -1,0 +1,198 @@
+---
+title: "Introduction"
+description: "Learn what development containers are, how the specification works, and why dev containers improve consistency across tools and teams."
+---
+
+A **development container** lets you use a container as a full-featured development environment. It can run an application, separate tools and runtimes needed for a codebase, and aid in continuous integration and testing — all from a single, portable configuration file.
+
+The Development Container Specification defines a structured, open format for that configuration. Any tool or service that implements the spec can read the same file and produce a consistent, reproducible environment.
+
+## What is a dev container?
+
+A dev container is a container in which a user can develop an application. The container holds the execution environment the application needs — runtimes, libraries, language servers, debuggers — exactly as defined, every time.
+
+Unlike a production container, a dev container is intentionally enriched with development-specific tooling. You may not want those tools in a deployment image, and you may need different secrets or settings during development. Dev containers let you draw that boundary explicitly.
+
+<Note>
+The specification does not replace container orchestration formats like Docker Compose. Instead, it enriches them with development-specific metadata while still supporting a simplified, un-orchestrated single-container option.
+</Note>
+
+## Why use dev containers?
+
+<CardGroup cols={2}>
+  <Card title="Consistency" icon="check-double">
+    Every developer on a team gets the same tools, runtimes, and settings. Environment-specific bugs caused by "works on my machine" differences are eliminated.
+  </Card>
+  <Card title="Reproducibility" icon="rotate">
+    Containers are created from a declared configuration. Rebuilding produces the same environment. Onboarding a new developer takes minutes, not days.
+  </Card>
+  <Card title="Team onboarding" icon="users">
+    New contributors open the repository, open the container, and start working. No manual setup guides, no missing dependencies, no version mismatches.
+  </Card>
+  <Card title="CI/CD reuse" icon="arrows-rotate">
+    The same dev container configuration works in GitHub Actions and Azure DevOps via the [devcontainers/ci](https://github.com/devcontainers/ci) project, so local development and CI use identical environments.
+  </Card>
+</CardGroup>
+
+## How the spec works
+
+The specification defines a metadata format — primarily expressed as a `devcontainer.json` file — that tools use to create and configure a development container.
+
+```json .devcontainer/devcontainer.json
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}
+```
+
+A supporting tool reads this file, pulls or builds the image, applies features and lifecycle commands, and connects you to the running container.
+
+### Where devcontainer.json lives
+
+Tools search for a `devcontainer.json` file in the following locations within a project, in order of precedence:
+
+1. `.devcontainer/devcontainer.json`
+2. `.devcontainer.json`
+3. `.devcontainer/<folder>/devcontainer.json` (one level deep, for multi-configuration projects)
+
+<Tip>
+The project workspace folder — where tools begin searching — is typically the root of the git repository (the directory containing `.git`).
+</Tip>
+
+## Containers and supporting tools
+
+The specification defines the metadata format. Separate tools and services implement it. This separation means you can write one `devcontainer.json` and use it with VS Code, GitHub Codespaces, JetBrains IDEs, and any other supporting tool — without changing the file.
+
+<CardGroup cols={2}>
+  <Card title="Supporting tools" icon="toolbox" href="/ecosystem/supporting-tools">
+    See the full list of editors and services that implement the spec.
+  </Card>
+  <Card title="Dev Container CLI" icon="terminal" href="/ecosystem/supporting-tools">
+    The open-source CLI reference implementation lets you use dev containers directly from the command line or integrate the spec into your own tooling.
+  </Card>
+</CardGroup>
+
+Tool-specific behavior — such as VS Code extensions or Codespaces permissions — is isolated inside a `customizations` object, keeping the core configuration portable.
+
+```jsonc
+"customizations": {
+  // Configure properties specific to VS Code.
+  "vscode": {
+    "settings": {},
+    "extensions": []
+  }
+}
+```
+
+## Specification components
+
+The spec is composed of several interconnected parts.
+
+### devcontainer.json
+
+The primary configuration format. A JSON with Comments (jsonc) file that describes the container image or build context, lifecycle commands, environment variables, mounts, forwarded ports, and tool customizations. See the [configuration reference](/spec/devcontainerjson-reference) for the full property list.
+
+### Orchestration options
+
+`devcontainer.json` supports three ways to define the container:
+
+- **Image-based**: reference a pre-built image by name
+- **Dockerfile-based**: build the container from a `Dockerfile`
+- **Docker Compose-based**: manage multiple containers with an existing Compose file
+
+See [orchestration options](/spec/orchestration) for details on each approach.
+
+### Lifecycle scripts
+
+Commands can run at each stage of the container lifecycle — during initialization, after creation, on each start, and when a tool attaches. This is how you install dependencies, run migrations, or start background services automatically.
+
+```json
+{
+  "postCreateCommand": "npm install",
+  "postStartCommand": {
+    "server": "npm start",
+    "db": ["mysql", "-u", "root", "-p", "my database"]
+  }
+}
+```
+
+See [lifecycle scripts](/spec/lifecycle) for the full sequence.
+
+### Image metadata
+
+Dev container configuration can be embedded directly in a container image using a `devcontainer.metadata` label. This lets prebuilt images carry their own configuration, which is then merged with any local `devcontainer.json` at container creation time.
+
+```json
+[
+  {
+    "postCreateCommand": "npm install",
+    "customizations": {}
+  }
+]
+```
+
+See [image metadata](/spec/image-metadata) for the merge logic and supported properties.
+
+### Features
+
+Features are self-contained, shareable units of installation code that add tools, runtimes, or libraries to a dev container. Add a Feature to any container with a single line in `devcontainer.json`:
+
+```json
+"features": {
+  "ghcr.io/devcontainers/features/github-cli:1": {}
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Features overview" icon="puzzle-piece" href="/ecosystem/features-overview">
+    Understand how Features work and how to use them.
+  </Card>
+  <Card title="Features reference" icon="file-lines" href="/ecosystem/features-reference">
+    Full reference for the devcontainer-feature.json format.
+  </Card>
+  <Card title="Authoring Features" icon="pen" href="/ecosystem/authoring-features">
+    Create and publish your own Features.
+  </Card>
+  <Card title="Features distribution" icon="upload" href="/ecosystem/features-distribution">
+    How Features are distributed via OCI registries.
+  </Card>
+</CardGroup>
+
+### Templates
+
+Templates are pre-built, ready-to-use dev container configurations for popular stacks. They provide a complete starting point — including a `devcontainer.json` and often a `Dockerfile` — so you don't have to build from scratch.
+
+<CardGroup cols={2}>
+  <Card title="Templates overview" icon="copy" href="/ecosystem/templates-overview">
+    Browse and use community-maintained Templates.
+  </Card>
+  <Card title="Authoring Templates" icon="pen" href="/ecosystem/authoring-templates">
+    Publish your own Templates for others to use.
+  </Card>
+</CardGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first devcontainer.json and open it in a supported tool.
+  </Card>
+  <Card title="Configuration reference" icon="sliders" href="/spec/devcontainerjson-reference">
+    Explore every property available in devcontainer.json.
+  </Card>
+  <Card title="Core concepts" icon="layer-group" href="/spec/devcontainer-reference">
+    Understand environments, metadata, orchestration, and lifecycle in depth.
+  </Card>
+  <Card title="Supporting tools" icon="toolbox" href="/ecosystem/supporting-tools">
+    See which editors and services implement the spec today.
+  </Card>
+</CardGroup>

@@ -1,0 +1,189 @@
+---
+title: "Templates overview"
+description: "Dev Container Templates are pre-packaged configurations that set up a complete development environment, ready to use in any supporting tool."
+---
+
+A **Dev Container Template** is a set of source files that encodes the configuration for a complete development environment. You can apply a Template to a new or existing project, and a [supporting tool](/ecosystem/supporting-tools) will use that configuration to build your dev container automatically.
+
+The configuration is placed in `.devcontainer/devcontainer.json` and can reference additional files within the Template — such as boilerplate code or [lifecycle scripts](https://containers.dev/implementors/json_reference/#lifecycle-scripts). Template metadata lives in a `devcontainer-template.json` file at the root of the Template folder.
+
+<CardGroup cols={2}>
+  <Card title="Templates distribution" icon="upload" href="/ecosystem/templates-distribution">
+    Publish and distribute your own Templates using OCI registries.
+  </Card>
+  <Card title="Features overview" icon="puzzle-piece" href="/ecosystem/features-overview">
+    Add individual tools and runtimes on top of any Template.
+  </Card>
+</CardGroup>
+
+## Folder structure
+
+A Template is a folder containing at least a `devcontainer-template.json` metadata file and a `.devcontainer/devcontainer.json` configuration file. Additional files are permitted and are packaged alongside the required files.
+
+```text
+template/
+├── devcontainer-template.json
+├── .devcontainer/
+│   ├── devcontainer.json
+│   └── (other files)
+└── (other files)
+```
+
+## devcontainer-template.json properties
+
+The `devcontainer-template.json` file defines Template metadata consumed by supporting tools.
+
+<ParamField path="id" type="string">
+  Unique identifier for the Template within its repository or published package. Must match the name of the directory where `devcontainer-template.json` resides.
+</ParamField>
+
+<ParamField path="version" type="string">
+  Semantic version of the Template (e.g. `1.2.3`).
+</ParamField>
+
+<ParamField path="name" type="string">
+  Human-readable name for the Template.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Short description of what the Template provides.
+</ParamField>
+
+<ParamField path="documentationURL" type="string">
+  URL pointing to the Template's documentation.
+</ParamField>
+
+<ParamField path="licenseURL" type="string">
+  URL pointing to the Template's license.
+</ParamField>
+
+<ParamField path="options" type="object">
+  A map of option IDs to their configuration. Supporting tools use these to prompt users for configuration choices, then substitute selected values into the Template files before applying them. See [the `options` property](#the-options-property) for details.
+</ParamField>
+
+<ParamField path="platforms" type="string[]">
+  Languages and platforms supported by the Template (e.g. `["Java", "Maven"]`).
+</ParamField>
+
+<ParamField path="publisher" type="string">
+  Name of the publisher or maintainer.
+</ParamField>
+
+<ParamField path="keywords" type="string[]">
+  Search terms that help users discover this Template.
+</ParamField>
+
+<ParamField path="optionalPaths" type="string[]">
+  Files or directories that tooling may offer to include or exclude when applying the Template. See [the `optionalPaths` property](#the-optionalpaths-property) for details.
+</ParamField>
+
+## The `options` property
+
+The `options` property is a map of option IDs to their configuration objects. When a user applies a Template, supporting tools read these options and prompt the user to choose values. The selected values are then substituted into all files within the Template sub-directory before the files are dropped into the project.
+
+Reference an option value in any file using the `${templateOption:optionId}` syntax.
+
+```json devcontainer-template.json (options example)
+{
+  "options": {
+    "optionId": {
+      "type": "string",
+      "description": "Description of the option",
+      "proposals": ["value1", "value2"],
+      "default": "value1"
+    }
+  }
+}
+```
+
+<Note>Option IDs must be unique within a single `devcontainer-template.json`.</Note>
+
+Each option entry supports the following fields:
+
+<ParamField path="options.optionId.type" type="string" required>
+  Data type of the option. Valid values: `string`, `boolean`.
+</ParamField>
+
+<ParamField path="options.optionId.description" type="string">
+  Human-readable description shown to the user when prompted.
+</ParamField>
+
+<ParamField path="options.optionId.proposals" type="string[]">
+  A list of suggested values. Free-form values are allowed. Omit when using `enum`.
+</ParamField>
+
+<ParamField path="options.optionId.enum" type="string[]">
+  A strict list of allowed values. Free-form values are not allowed. Omit when using `proposals`.
+</ParamField>
+
+<ParamField path="options.optionId.default" type="string">
+  Default value used if the user does not select one.
+</ParamField>
+
+### Option substitution in files
+
+Any file within the Template sub-directory can reference option values using `${templateOption:optionId}`. The supporting tool replaces these placeholders with the user's selected values before writing the files to the project.
+
+The following example shows a `.devcontainer/devcontainer.json` that uses three Template options:
+
+```json .devcontainer/devcontainer.json
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:0-${templateOption:imageVariant}",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "${templateOption:nodeVersion}",
+      "installMaven": "${templateOption:installMaven}"
+    }
+  }
+}
+```
+
+After the user selects values, a supporting tool produces the final file with all placeholders replaced. See [option resolution](/ecosystem/templates-distribution#option-resolution) for a complete walkthrough.
+
+## The `optionalPaths` property
+
+Before applying a Template, supporting tools inspect `optionalPaths` and prompt the user on whether to include each listed file or directory. All paths are relative to the root of the Template source directory.
+
+- **Single file**: provide the full relative path without leading or trailing delimiters.
+- **Directory**: provide the full relative path with a trailing `/*`. The directory and all its descendants are recursively included or excluded.
+
+```jsonc devcontainer-template.json (optionalPaths example)
+{
+  "id": "cpp",
+  "version": "3.0.0",
+  "name": "C++",
+  "description": "Develop C++ applications",
+  "optionalPaths": [
+    "GETTING-STARTED.md",                 // single file
+    "example-project-1/MyProject.csproj", // single file in nested directory
+    ".github/*"                           // entire recursive contents of directory
+  ]
+}
+```
+
+## Referencing a Template
+
+Templates are identified and distributed using an OCI registry path in the format:
+
+```text
+<oci-registry>/<namespace>/<template>[:<semantic-version>]
+```
+
+Examples:
+
+```text
+ghcr.io/user/repo/go
+ghcr.io/user/repo/go:1
+ghcr.io/user/repo/go:latest
+```
+
+The registry must implement the [OCI Artifact Distribution Specification](https://github.com/opencontainers/distribution-spec). Supporting tools use this ID to locate and download the Template tarball.
+
+## Versioning
+
+Each Template is independently versioned using [semver](https://semver.org/). Update the `version` field in `devcontainer-template.json` to publish a new release.
+
+<Tip>
+  Tooling will not republish a Template if the exact version already exists in the registry, but it will republish major and minor version tags to keep them up to date.
+</Tip>
